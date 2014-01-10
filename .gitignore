@@ -1,0 +1,5 @@
+*.pyc
+*.swp
+build
+Coronado.egg-info
+dist
