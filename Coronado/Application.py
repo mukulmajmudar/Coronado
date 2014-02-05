@@ -7,7 +7,7 @@ import MySQLdb
 from MySQLdb.cursors import DictCursor
 
 from .MySQLMessageQueue import MySQLMessageQueue
-from . import Email
+from . import Email 
 
 class Application(object):
     config = None
