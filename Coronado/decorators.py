@@ -1,6 +1,7 @@
 from functools import wraps
-from RPCError import RPCError
 import json
+
+from .RPCError import RPCError
 
 def rpc(wrappedMethod):
     @wraps(wrappedMethod)

@@ -3,3 +3,7 @@
 build
 Coronado.egg-info
 dist
+bin
+lib
+lib64
+include

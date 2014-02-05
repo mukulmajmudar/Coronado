@@ -1,5 +1,6 @@
+import os
+
 import tornado.web
-import json
 
 class ReqHandlerCfgError(Exception):
     pass
@@ -12,7 +13,7 @@ class RequestHandler(tornado.web.RequestHandler):
         # Initialize context with defaults
         self.context = \
         {
-            'allowedCORSDomains': [],
+            'allowedCORSOrigins': [],
             'sendEmailOnError': False,
             'errorEmailRecipient': None,
             'errorEmailSubject': '[ERROR] Server Error Occurred',
@@ -25,17 +26,18 @@ class RequestHandler(tornado.web.RequestHandler):
 
         # Validate context
         if self.context['sendEmailOnError']:
-            if self.context['emailRecipient'] is None:
-                raise ReqHandlerCfgError(
-                    'emailRecipient argument is required in order to send errors')
+            if self.context['errorEmailRecipient'] is None:
+                raise ReqHandlerCfgError('errorEmailRecipient argument is ' +
+                    'required in order to send errors')
 
-            if self.context['emailer'] is None:
-                raise ReqHandlerCfgError(
-                    'emailer argument is required in order to send errors.')
+            if self.context['errorEmailer'] is None \
+                    or not callable(self.context['errorEmailer']):
+                raise ReqHandlerCfgError('errorEmailer argument is ' +
+                    'required in order to send errors.')
 
-            if self.context['templateDir'] is None:
-                raise ReqHandlerCfgError(
-                    'templateDir argument is required in order to send errors.')
+            if self.context['errorTemplateDir'] is None:
+                raise ReqHandlerCfgError('errorTemplateDir argument is ' +
+                    'required in order to send errors.')
 
         self._ioloop = self.context['ioloop']
         self._database = self.context['database']
@@ -52,7 +54,7 @@ class RequestHandler(tornado.web.RequestHandler):
         # Manage cross-origin access
         if 'Origin' in self.request.headers \
                 and self.request.headers['Origin'] \
-                in self.context['allowedCORSDomains']:
+                in self.context['allowedCORSOrigins']:
             self.set_header('Access-Control-Allow-Origin', 
                     self.request.headers['Origin'])
             self.set_header('Access-Control-Allow-Methods', 
@@ -69,7 +71,7 @@ class RequestHandler(tornado.web.RequestHandler):
         # Allow cross-origin access to everyone
         if 'Origin' in self.request.headers \
                 and self.request.headers['Origin'] \
-                in self.context['allowedCORSDomains']:
+                in self.context['allowedCORSOrigins']:
             self.set_header('Access-Control-Allow-Origin', 
                     self.request.headers['Origin'])
             self.set_header('Access-Control-Allow-Methods', 
@@ -85,12 +87,12 @@ class RequestHandler(tornado.web.RequestHandler):
     def send_error(self, status=500, **kwargs):
         if status >= 500 and self.context['sendEmailOnError']:
             # Send error email
-            self.context['emailer'](
+            self.context['errorEmailer'](
                     subject='[ERROR] CureCompanion Server Error Occurred',
-                    recipient=self.context['emailRecipient'],
-                    htmlFile=os.path.join(self.context['templateDir'],
+                    recipient=self.context['errorEmailRecipient'],
+                    htmlFile=os.path.join(self.context['errorTemplateDir'],
                         'errorEmail.html'),
-                    textFile=os.path.join(self.context['templateDir'],
+                    textFile=os.path.join(self.context['errorTemplateDir'],
                         'errorEmail.txt'),
                     templateArgs=dict(status=status))
 

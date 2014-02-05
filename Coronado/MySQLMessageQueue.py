@@ -9,10 +9,12 @@ class MySQLMessageQueue(object):
     condition = None
     mysqlArgs = None
     database = None
+    name = None
 
     def __init__(self, mysqlArgs, name='messageQueue'):
         self.condition = multiprocessing.Condition()
         self.mysqlArgs = mysqlArgs
+        self.name = name
 
         # Connect to MySQL
         self.database = MySQLdb.connect(host=mysqlArgs['host'],
@@ -29,7 +31,7 @@ class MySQLMessageQueue(object):
 
             # Create message queue table
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS ''' + name + '''(
+                CREATE TABLE IF NOT EXISTS `''' + name + '''`(
                     position INT UNSIGNED PRIMARY KEY AUTO_INCREMENT,
                     class VARCHAR(100) CHARACTER SET utf8,
                     value TEXT) ENGINE=INNODB''')
@@ -38,9 +40,10 @@ class MySQLMessageQueue(object):
     def put(self, msgClass, msgValue):
         cursor = None
         try:
+            self.condition.acquire()
             cursor = self.database.cursor()
             cursor.execute(
-                '''INSERT INTO messageQueue (class, value) 
+                '''INSERT INTO `''' + self.name + '''` (class, value) 
                    VALUES(%s, %s)''', (msgClass, msgValue))
             self.database.commit()
 
@@ -61,8 +64,8 @@ class MySQLMessageQueue(object):
 
             def getNextRow():
                 cursor.execute(
-                    '''SELECT position, class, value FROM messageQueue 
-                       ORDER BY position LIMIT 1''')
+                    '''SELECT position, class, value FROM `''' + self.name 
+                    + '''` ORDER BY position LIMIT 1''')
                 self.database.commit()
                 return cursor.fetchone()
 
@@ -75,7 +78,8 @@ class MySQLMessageQueue(object):
 
             # Delete the row from the database
             cursor.execute(
-                    '''DELETE FROM messageQueue WHERE position = %s''', row[0])
+                    '''DELETE FROM `''' + self.name + 
+                    '''` WHERE position = %s''', (row[0],))
             self.database.commit()
 
             # A row is available, so return it as a message

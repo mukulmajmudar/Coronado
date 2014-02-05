@@ -1,16 +1,19 @@
 import multiprocessing
 
-from CoronadoError import CoronadoError
-from MySQLMessageQueue import MySQLMessageQueue, MessageDispatcher
+from .CoronadoError import CoronadoError
+from .MySQLMessageQueue import MySQLMessageQueue, MessageDispatcher
 
-def startMessageQueue(messageQueue=None, mysqlArgs=None, messageHandlers={},
+def startMessageQueue(messageQueue=None, name='messageQueue',
+        mysqlArgs=None, messageHandlers=None,
         numProcesses=multiprocessing.cpu_count()):
+    if messageHandlers is None:
+        messageHandlers = {}
 
     if messageQueue is None:
         if mysqlArgs is None:
             raise CoronadoError(
                 'Either messageQueue or mysqlArgs argument is required')
-        messageQueue = MySQLMessageQueue(mysqlArgs)
+        messageQueue = MySQLMessageQueue(mysqlArgs, name)
 
     def startMessageDispatcher():
         dispatcher = MessageDispatcher(messageQueue)

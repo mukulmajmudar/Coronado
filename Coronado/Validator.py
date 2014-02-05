@@ -6,6 +6,7 @@ class ValidationError(Exception):
     error = None
 
     def __init__(self, error, key=None):
+        super(ValidationError, self).__init__(error)
         self.error = error
         self.key = key
 

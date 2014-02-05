@@ -3,10 +3,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import json
 import string
-from contextlib import closing
-import functools
-
-import MySQLdb
+import sys
 
 def send(messageQueue, subject, recipient, htmlFile=None,
     textFile=None, templateArgs=None):
