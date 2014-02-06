@@ -7,9 +7,11 @@ else:
 import os
 import json
 import tempfile
+from contextlib import closing
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
+import tornado.testing
 
 from .Exceptions import IllegalArgument
 
@@ -40,11 +42,28 @@ class AppTester(object):
         try:
             self.app.startListening()
 
-            self._run()
+            # Build the test suite
+            suite = self.suiteBuilder(self.app.context)
 
-            # Start the application's event loop
-            self.app.startEventLoop()
+            # Run the suite
+            result = unittest.TestResult()
+            suite.run(result)
+
+            # Check for errors and failures
+            if result.errors:
+                for error in result.errors:
+                    print 'Error:\n' + error[1]
+            if result.failures:
+                for failure in result.failures:
+                    print 'Failure:\n' + failure[1]
+            if not result.errors and not result.failures:
+                print 'All tests passed successfully. Congratulations!'
+
         finally:
+            # Destroy the app
+            #self.app.destroy()
+
+            # Destroy the test database
             self._destroyTestDatabase()
 
 
@@ -77,75 +96,64 @@ class AppTester(object):
         '''
         Destroy the test database
         '''
-        context = self.app.context
         cmd = 'mysql --user=%s --password="%s" %s --execute="%s"' \
-                % (context['mysql']['user'],
-                        context['mysql']['password'],
-                        context['mysql']['dbName'],
-                        'DROP DATABASE ' + context['mysql']['dbName'])
+                % (self.config['mysql']['user'],
+                        self.config['mysql']['password'],
+                        self.config['mysql']['dbName'],
+                        'DROP DATABASE ' + self.config['mysql']['dbName'])
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Could not destroy database')
 
 
-    def _run(self):
-        # Build the test suite
-        suite = self.suiteBuilder(self.app.context)
-
-        # Run the suite
-        result = unittest.TestResult()
-        suite.run(result)
-
-        # Check for errors and failures
-        if result.errors:
-            for error in result.errors:
-                print 'Error:\n' + error[1]
-        if result.failures:
-            for failure in result.failures:
-                print 'Failure:\n' + failure[1]
-        if not result.errors and not result.failures:
-            print 'All tests passed successfully. Congratulations!'
-
-        # Destroy the app
-        self.app.destroy()
-
-
-class DbFixtureTestCase(unittest.TestCase):
-    fixture = None
-    database = None
+class DbFixtureTestCase(tornado.testing.AsyncTestCase):
 
     def __init__(self, *args, **kwargs):
-        # Call super
-        super(DbFixtureTestCase, self).__init__(*args)
-        self.context = kwargs['context']
-        self.database = self.context['database']
-        self.fixture = kwargs['fixture']
+        self._database = kwargs['database']
+        self._mysqlArgs = kwargs['mysql']
+        self._ioloop = kwargs['ioloop']
+        del kwargs['database']
+        del kwargs['mysql']
+        del kwargs['ioloop']
 
-        # If fixture is a file path, load it as a path relative to 
-        if isinstance(self.fixture, str):
-            self.fixture = json.load(open(self.fixture))
+        # Call parent constructor
+        super(DbFixtureTestCase, self).__init__(*args, **kwargs)
 
-        # Fixture must be a dictionary
-        if not isinstance(self.fixture, dict):
-            raise IllegalArgument('fixture must be a dictionary')
+
+    def get_new_ioloop(self):
+        return self._ioloop
 
 
     def setUp(self):
+        # Call parent version
+        super(DbFixtureTestCase, self).setUp()
+
+        # Get the fixture
+        fixture = self._getFixture()
+
+        # If fixture is a file path, load it as JSON
+        if isinstance(fixture, str):
+            fixture = json.load(open(fixture))
+
+        # Fixture must be a dictionary
+        if not isinstance(fixture, dict):
+            raise IllegalArgument('fixture must be a dictionary')
+
         # If there is no "self" key in self.fixture, that means the
         # entire fixture dict is the self fixture
-        if 'self' not in self.fixture:
-            self._installSelfFixture(self.fixture)
+        if 'self' not in fixture:
+            self._installSelfFixture(fixture)
         else:
             # Fixtures for multiple apps are given
-            for appName, fixture in self.fixture.items():
+            for appName, fix in fixture.items():
                 if appName == 'self':
-                    self._installSelfFixture(fixture)
+                    self._installSelfFixture(fix)
                 else:
                     # Output fixture into a JSON file and wait for confirmation
                     # from user that it has been loaded into the correct app
                     f = tempfile.NamedTemporaryFile(prefix=appName + '-', suffix='.json',
                             delete=False)
-                    json.dump(fixture, f)
+                    json.dump(fix, f)
                     raw_input(('Please load the file "%s" into a test ' +
                         'instance of "%s". Press ENTER to continue.') 
                         % (f.name, appName))
@@ -155,20 +163,27 @@ class DbFixtureTestCase(unittest.TestCase):
         '''
         Truncate all tables.
         '''
+        # Call parent version
+        super(DbFixtureTestCase, self).tearDown()
+
         # Credit: http://stackoverflow.com/a/8912749/1196816
         cmd = ("mysql -u %s -p'%s' -Nse 'show tables' %s " \
                 + "| while read table; do mysql -u %s -p'%s' -e \"truncate table $table\" " \
                 + "%s; done") % (
-                        self.context['mysql']['user'], 
-                        self.context['mysql']['password'],
-                        self.context['mysql']['dbName'], 
-                        self.context['mysql']['user'], 
-                        self.context['mysql']['password'],
-                        self.context['mysql']['dbName'])
+                        self._mysqlArgs['user'], 
+                        self._mysqlArgs['password'],
+                        self._mysqlArgs['dbName'], 
+                        self._mysqlArgs['user'], 
+                        self._mysqlArgs['password'],
+                        self._mysqlArgs['dbName'])
 
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Failed to reset database')
+
+
+    def _getFixture(self):
+        return {}
 
 
     def _installSelfFixture(self, fixture):
@@ -178,6 +193,8 @@ class DbFixtureTestCase(unittest.TestCase):
                 query = 'INSERT INTO ' + tableName + ' (' \
                         + ','.join(row.keys()) \
                         + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
-                with closing(self.database.cursor()) as cursor:
+                with closing(self._database.cursor()) as cursor:
                     cursor.execute(query, tuple(row.values()))
 
+    _database = None
+    _mysqlArgs = None

@@ -34,7 +34,8 @@ class Application(object):
         if 'database' not in self.context:
             self.context['database'] = self._getDbConnection()
         if 'httpClient' not in self.context:
-            self.context['httpClient'] = tornado.httpclient.AsyncHTTPClient()
+            self.context['httpClient'] = tornado.httpclient.AsyncHTTPClient(
+                    self.context['ioloop'])
         if 'messageQueue' not in self.context:
             self.context['messageQueue'] = MySQLMessageQueue(
                     self.context['mysql'])
