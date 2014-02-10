@@ -120,14 +120,18 @@ class MessageDispatcher(object):
                 message = self.messageQueue.get()
             except KeyboardInterrupt:
                 break
+            else:
+                if message['class'] == '__STOP__':
+                    break
 
-            # Give it to registered handlers, if any
-            if message['class'] in self.handlers:
-                handlerList = self.handlers[message['class']]
-                for handler in handlerList:
-                    try:
-                        handler(message['value'])
-                    except Exception as e:
-                        sys.stderr.write('Exception occurred while handling '
-                                + 'message: \n')
-                        sys.stderr.write(traceback.format_exc() + '\n')
+                # Give it to registered handlers, if any
+                if message['class'] in self.handlers:
+                    handlerList = self.handlers[message['class']]
+                    for handler in handlerList:
+                        try:
+                            handler(message['value'])
+                        except Exception as e:
+                            sys.stderr.write(
+                                'Exception occurred while handling '
+                                    + 'message: \n')
+                            sys.stderr.write(traceback.format_exc() + '\n')

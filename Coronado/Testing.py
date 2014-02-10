@@ -61,7 +61,7 @@ class AppTester(object):
 
         finally:
             # Destroy the app
-            #self.app.destroy()
+            self.app.destroy()
 
             # Destroy the test database
             self._destroyTestDatabase()
@@ -109,12 +109,11 @@ class AppTester(object):
 class DbFixtureTestCase(tornado.testing.AsyncTestCase):
 
     def __init__(self, *args, **kwargs):
-        self._database = kwargs['database']
-        self._mysqlArgs = kwargs['mysql']
-        self._ioloop = kwargs['ioloop']
-        del kwargs['database']
-        del kwargs['mysql']
-        del kwargs['ioloop']
+        self._context = kwargs['context']
+        self._database = self._context['database']
+        self._mysqlArgs = self._context['mysql']
+        self._ioloop = self._context['ioloop']
+        del kwargs['context']
 
         # Call parent constructor
         super(DbFixtureTestCase, self).__init__(*args, **kwargs)
@@ -196,5 +195,6 @@ class DbFixtureTestCase(tornado.testing.AsyncTestCase):
                 with closing(self._database.cursor()) as cursor:
                     cursor.execute(query, tuple(row.values()))
 
+    _context = None
     _database = None
     _mysqlArgs = None

@@ -18,7 +18,7 @@ class RequestHandler(tornado.web.RequestHandler):
             'errorEmailRecipient': None,
             'errorEmailSubject': '[ERROR] Server Error Occurred',
             'errorEmailer': None,
-            'errorTemplateDir': None
+            'errorTemplatesDir': None
         }
 
         # Update context with arguments
@@ -35,8 +35,8 @@ class RequestHandler(tornado.web.RequestHandler):
                 raise ReqHandlerCfgError('errorEmailer argument is ' +
                     'required in order to send errors.')
 
-            if self.context['errorTemplateDir'] is None:
-                raise ReqHandlerCfgError('errorTemplateDir argument is ' +
+            if self.context['errorTemplatesDir'] is None:
+                raise ReqHandlerCfgError('errorTemplatesDir argument is ' +
                     'required in order to send errors.')
 
         self._ioloop = self.context['ioloop']
@@ -90,9 +90,9 @@ class RequestHandler(tornado.web.RequestHandler):
             self.context['errorEmailer'](
                     subject='[ERROR] CureCompanion Server Error Occurred',
                     recipient=self.context['errorEmailRecipient'],
-                    htmlFile=os.path.join(self.context['errorTemplateDir'],
+                    htmlFile=os.path.join(self.context['errorTemplatesDir'],
                         'errorEmail.html'),
-                    textFile=os.path.join(self.context['errorTemplateDir'],
+                    textFile=os.path.join(self.context['errorTemplatesDir'],
                         'errorEmail.txt'),
                     templateArgs=dict(status=status))
 

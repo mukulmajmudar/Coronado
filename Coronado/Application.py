@@ -6,8 +6,9 @@ import tornado.httpclient
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 
+import Coronado
 from .MySQLMessageQueue import MySQLMessageQueue
-from . import Email 
+from . import Email
 
 class Application(object):
     config = None
@@ -51,11 +52,10 @@ class Application(object):
 
     def startListening(self):
         # Start the message queue
-        """Coronado.startMessageQueue(
+        Coronado.startMessageQueue(
                 messageQueue=self.context['messageQueue'],
                 mysqlArgs=self.context['mysql'], 
                 messageHandlers=self.context['messageHandlers'])
-        """
 
         self.tornadoApp.listen(self.context['tornado']['port'])
 
@@ -64,10 +64,12 @@ class Application(object):
         self.context['ioloop'].start()
 
 
-    def destroy(self):
+    def stopEventLoop(self):
         self.context['ioloop'].stop()
 
-        # TODO: destroy message queue
+
+    def destroy(self):
+        Coronado.stopMessageQueue(self.context['messageQueue'])
 
 
     def _getDbConnection(self):
