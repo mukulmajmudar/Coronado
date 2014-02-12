@@ -1,14 +1,15 @@
-from twisted.internet import defer
 import string
 
-class ValidationError(Exception):
-    key = None
-    error = None
+import tornado.concurrent
 
-    def __init__(self, error, key=None):
-        super(ValidationError, self).__init__(error)
-        self.error = error
-        self.key = key
+from .Concurrent import when, transform
+
+class ValidationError(Exception):
+    invalidResults = None
+
+    def __init__(self, invalidResults):
+        super(ValidationError, self).__init__()
+        self.invalidResults = invalidResults
 
 
 class Validator(object):
@@ -23,15 +24,36 @@ class Validator(object):
 
 
     def validate(self):
+        # Call all validation methods
+        futures = [self._validateAttr(key) for key in self._validationOrder]
 
-        # If there is an error while validating any property,
-        # pass on that error to the next registered errback
-        def onAnyError(failure):
-            failure.trap(defer.FirstError)
-            raise failure.value.subFailure.value
-        return defer.gatherResults(
-                map(self._validateAttr, self._validationOrder), 
-                consumeErrors=True).addErrback(onAnyError)
+        def getValidationErrors(validationFuture):
+            # Get list of futures from validations
+            subFutures = validationFuture.result()
+
+            # Filter to a map of invalid results
+            invalidResults = dict()
+            index = 0
+            try:
+                for subFuture in subFutures:
+                    result = subFuture.result()
+                    if result is not True:
+                        invalidResults[self._validationOrder[index]] = result
+                    index += 1
+            except Exception as e:
+                f = tornado.concurrent.Future()
+                f.set_exception(e)
+                return f
+            else:
+                if invalidResults:
+                    f = tornado.concurrent.Future()
+                    f.set_exception(ValidationError(invalidResults))
+                    return f
+                return None
+
+        # When all validation methods are done, transform the list result
+        # into a dictionary of invalid results
+        return transform(when(*futures), getValidationErrors)
 
 
     def _validateAttr(self, key):
@@ -46,14 +68,16 @@ class Validator(object):
         # Get the value to validate
         value = getattr(self._validatee, key)
 
-        if not callable(validator):
-            raise ValidationError('NoValidator', key)
+        try:
+            # Make sure validator is callable
+            if not callable(validator):
+                raise ValidationError('NoValidator', key)
 
-        def onValidationFailed(failure):
-            failure.trap(ValidationError)
-            failure.value.key = key
-            raise failure.value
-
-        # Call validator
-        return defer.maybeDeferred(validator, value).addErrback(
-                onValidationFailed)
+            # Call validator
+            return validator(value)
+        except Exception as e:
+            if isinstance(e, ValidationError):
+                e.key = key
+            f = tornado.concurrent.Future()
+            f.set_exception(e)
+            return f

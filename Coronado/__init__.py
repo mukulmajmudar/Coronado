@@ -26,14 +26,18 @@ def startMessageQueue(messageQueue=None, name='messageQueue',
         dispatcher.start()
 
 
+    messageQueue._processes = []
     for x in xrange(numProcesses):
-        multiprocessing.Process(target=startMessageDispatcher).start()
-
-    messageQueue._numDispatchers = numProcesses
+        process = multiprocessing.Process(target=startMessageDispatcher)
+        messageQueue._processes.append(process)
+        process.start()
 
     return messageQueue
 
 
 def stopMessageQueue(messageQueue):
-    for x in xrange(messageQueue._numDispatchers):
+    for x in xrange(len(messageQueue._processes)):
         messageQueue.put('__STOP__', '')
+
+    for process in messageQueue._processes:
+        process.join()

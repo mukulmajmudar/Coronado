@@ -107,8 +107,26 @@ class AppTester(object):
 
 
 class DbFixtureTestCase(tornado.testing.AsyncTestCase):
+    '''
+    Test case with a database fixture.
+
+    Implement _getFixture() to return either a dictionary or a 
+    JSON file path containing a fixture. The fixture should be
+    a dictionary mapping table names to rows.
+    '''
 
     def __init__(self, *args, **kwargs):
+        '''
+        A "context" keyword argument is required. It should be a dictionary
+        containing at least the following mappings:
+
+        database => MySQL database connection
+        mysql => dictionary of MySQL connection arguments: must contain at least
+                 user, password, dbName
+        ioloop => Tornado IOLoop to be used for this test case
+
+        The context argument will be available to subclasses as self._context.
+        '''
         self._context = kwargs['context']
         self._database = self._context['database']
         self._mysqlArgs = self._context['mysql']

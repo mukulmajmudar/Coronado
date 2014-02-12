@@ -2,8 +2,10 @@ import multiprocessing
 from contextlib import closing
 import sys
 import traceback
+from contextlib import closing
 
 import MySQLdb
+from MySQLdb.cursors import DictCursor
 
 class MySQLMessageQueue(object):
     condition = None
@@ -19,7 +21,8 @@ class MySQLMessageQueue(object):
         # Connect to MySQL
         self.database = MySQLdb.connect(host=mysqlArgs['host'],
                 user=mysqlArgs['user'], passwd=mysqlArgs['password'], 
-                db=mysqlArgs['dbName'], use_unicode=True, charset='utf8')
+                db=mysqlArgs['dbName'], use_unicode=True, charset='utf8',
+                cursorclass=DictCursor)
 
         # Turn on autocommit
         self.database.autocommit(True)
@@ -38,13 +41,12 @@ class MySQLMessageQueue(object):
 
 
     def put(self, msgClass, msgValue):
-        cursor = None
+        self.condition.acquire()
         try:
-            self.condition.acquire()
-            cursor = self.database.cursor()
-            cursor.execute(
-                '''INSERT INTO `''' + self.name + '''` (class, value) 
-                   VALUES(%s, %s)''', (msgClass, msgValue))
+            with closing(self.database.cursor()) as cursor:
+                cursor.execute(
+                    '''INSERT INTO `''' + self.name + '''` (class, value) 
+                       VALUES(%s, %s)''', (msgClass, msgValue))
             self.database.commit()
 
             # Notify any waiting processes
@@ -52,22 +54,17 @@ class MySQLMessageQueue(object):
 
         finally:
             self.condition.release()
-            if cursor is not None:
-                cursor.close()
 
 
     def get(self):
-        cursor = None
+        self.condition.acquire()
         try:
-            self.condition.acquire()
-            cursor = self.database.cursor()
-
             def getNextRow():
-                cursor.execute(
-                    '''SELECT position, class, value FROM `''' + self.name 
-                    + '''` ORDER BY position LIMIT 1''')
-                self.database.commit()
-                return cursor.fetchone()
+                with closing(self.database.cursor()) as cursor:
+                    cursor.execute(
+                        '''SELECT position, class, value FROM `''' + self.name
+                        + '''` ORDER BY position LIMIT 1''')
+                    return cursor.fetchone()
 
             # Get the next row from the database. If no rows, wait
             # till a row is available
@@ -77,19 +74,16 @@ class MySQLMessageQueue(object):
                 row = getNextRow()
 
             # Delete the row from the database
-            cursor.execute(
-                    '''DELETE FROM `''' + self.name + 
-                    '''` WHERE position = %s''', (row[0],))
-            self.database.commit()
+            with closing(self.database.cursor()) as cursor:
+                cursor.execute(
+                        '''DELETE FROM `''' + self.name + 
+                        '''` WHERE position = %s''', (row['position'],))
 
             # A row is available, so return it as a message
-            message = {'class' : row[1], 'value' : row[2]}
+            message = {'class' : row['class'], 'value' : row['value']}
             return message
-
         finally:
             self.condition.release()
-            if cursor is not None:
-                cursor.close()
          
 
 class MessageDispatcher(object):

@@ -41,7 +41,12 @@ class Application(object):
             self.context['messageQueue'] = MySQLMessageQueue(
                     self.context['mysql'])
         if 'messageHandlers' not in self.context:
-            self.context['messageHandlers'] = {}
+            self.context['messageHandlers'] = dict(
+                    email=Coronado.Email.MessageHandler(self.context['smtp']))
+        else:
+            if 'email' not in self.context['messageHandlers']:
+                self.context['messageQueue']['email'] \
+                        = Coronado.Email.MessageHandler(self.context['smtp'])
         if 'errorEmailer' not in self.context:
             self.context['errorEmailer'] = functools.partial(
                     Email.send, self.context['messageQueue'])

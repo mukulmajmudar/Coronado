@@ -7,11 +7,10 @@ class ReqHandlerCfgError(Exception):
 
 
 class RequestHandler(tornado.web.RequestHandler):
-    context = None
 
     def initialize(self, **kwargs):
         # Initialize context with defaults
-        self.context = \
+        self._context = \
         {
             'allowedCORSOrigins': [],
             'sendEmailOnError': False,
@@ -22,26 +21,26 @@ class RequestHandler(tornado.web.RequestHandler):
         }
 
         # Update context with arguments
-        self.context.update(kwargs)
+        self._context.update(kwargs)
 
         # Validate context
-        if self.context['sendEmailOnError']:
-            if self.context['errorEmailRecipient'] is None:
+        if self._context['sendEmailOnError']:
+            if self._context['errorEmailRecipient'] is None:
                 raise ReqHandlerCfgError('errorEmailRecipient argument is ' +
                     'required in order to send errors')
 
-            if self.context['errorEmailer'] is None \
-                    or not callable(self.context['errorEmailer']):
+            if self._context['errorEmailer'] is None \
+                    or not callable(self._context['errorEmailer']):
                 raise ReqHandlerCfgError('errorEmailer argument is ' +
                     'required in order to send errors.')
 
-            if self.context['errorTemplatesDir'] is None:
+            if self._context['errorTemplatesDir'] is None:
                 raise ReqHandlerCfgError('errorTemplatesDir argument is ' +
                     'required in order to send errors.')
 
-        self._ioloop = self.context['ioloop']
-        self._database = self.context['database']
-        self._httpClient = self.context['httpClient']
+        self._ioloop = self._context['ioloop']
+        self._database = self._context['database']
+        self._httpClient = self._context['httpClient']
 
 
     def options(self, *args, **kwargs):
@@ -54,7 +53,7 @@ class RequestHandler(tornado.web.RequestHandler):
         # Manage cross-origin access
         if 'Origin' in self.request.headers \
                 and self.request.headers['Origin'] \
-                in self.context['allowedCORSOrigins']:
+                in self._context['allowedCORSOrigins']:
             self.set_header('Access-Control-Allow-Origin', 
                     self.request.headers['Origin'])
             self.set_header('Access-Control-Allow-Methods', 
@@ -71,7 +70,7 @@ class RequestHandler(tornado.web.RequestHandler):
         # Allow cross-origin access to everyone
         if 'Origin' in self.request.headers \
                 and self.request.headers['Origin'] \
-                in self.context['allowedCORSOrigins']:
+                in self._context['allowedCORSOrigins']:
             self.set_header('Access-Control-Allow-Origin', 
                     self.request.headers['Origin'])
             self.set_header('Access-Control-Allow-Methods', 
@@ -85,14 +84,14 @@ class RequestHandler(tornado.web.RequestHandler):
 
 
     def send_error(self, status=500, **kwargs):
-        if status >= 500 and self.context['sendEmailOnError']:
+        if status >= 500 and self._context['sendEmailOnError']:
             # Send error email
-            self.context['errorEmailer'](
+            self._context['errorEmailer'](
                     subject='[ERROR] CureCompanion Server Error Occurred',
-                    recipient=self.context['errorEmailRecipient'],
-                    htmlFile=os.path.join(self.context['errorTemplatesDir'],
+                    recipient=self._context['errorEmailRecipient'],
+                    htmlFile=os.path.join(self._context['errorTemplatesDir'],
                         'errorEmail.html'),
-                    textFile=os.path.join(self.context['errorTemplatesDir'],
+                    textFile=os.path.join(self._context['errorTemplatesDir'],
                         'errorEmail.txt'),
                     templateArgs=dict(status=status))
 
@@ -100,6 +99,7 @@ class RequestHandler(tornado.web.RequestHandler):
         super(RequestHandler, self).send_error(status, **kwargs)
 
 
+    _context = None
     _ioloop = None
     _database = None
     _httpClient = None
