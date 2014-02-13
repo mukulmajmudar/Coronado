@@ -8,8 +8,8 @@ setup(
     install_requires=
     [
         'tornado',
-        'Twisted',
-        'MySQL-python'
+        'MySQL-python',
+        'unittest2'
     ],
     author='Mukul Majmudar',
     author_email='mukul@curecompanion.com',
