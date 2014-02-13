@@ -20,7 +20,7 @@ def when(*args, **kwargs):
         numDone[0] += 1
         if numDone[0] == numFutures:
             if numFutures > 1:
-                future.set_result(result)
+                future.set_result(tuple(result))
             else:
                 tornado.concurrent.chain_future(f, future)
 
