@@ -105,8 +105,33 @@ class AppTester(object):
         if rc != 0:
             raise TestEnvironmentError('Could not destroy database')
 
+class TestCase(tornado.testing.AsyncTestCase):
 
-class DbFixtureTestCase(tornado.testing.AsyncTestCase):
+    def __init__(self, *args, **kwargs):
+        '''
+        A "context" keyword argument is required. It should be a dictionary
+        containing at least the following mappings:
+
+        ioloop => Tornado IOLoop to be used for this test case
+
+        The context argument will be available to subclasses as self._context.
+        '''
+        self._context = kwargs['context']
+        self._ioloop = self._context['ioloop']
+        del kwargs['context']
+
+        # Call parent constructor
+        super(TestCase, self).__init__(*args, **kwargs)
+
+
+    def get_new_ioloop(self):
+        return self._ioloop
+
+
+    _ioloop = None
+
+
+class DbFixtureTestCase(TestCase):
     '''
     Test case with a database fixture.
 
@@ -124,21 +149,13 @@ class DbFixtureTestCase(tornado.testing.AsyncTestCase):
         mysql => dictionary of MySQL connection arguments: must contain at least
                  user, password, dbName
         ioloop => Tornado IOLoop to be used for this test case
-
-        The context argument will be available to subclasses as self._context.
         '''
-        self._context = kwargs['context']
-        self._database = self._context['database']
-        self._mysqlArgs = self._context['mysql']
-        self._ioloop = self._context['ioloop']
-        del kwargs['context']
+        context = kwargs['context']
+        self._database = context['database']
+        self._mysqlArgs = context['mysql']
 
         # Call parent constructor
         super(DbFixtureTestCase, self).__init__(*args, **kwargs)
-
-
-    def get_new_ioloop(self):
-        return self._ioloop
 
 
     def setUp(self):

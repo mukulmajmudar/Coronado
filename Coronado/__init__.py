@@ -1,4 +1,5 @@
 import multiprocessing
+import pdb
 
 from .CoronadoError import CoronadoError
 from .MySQLMessageQueue import MySQLMessageQueue, MessageDispatcher
@@ -36,7 +37,11 @@ def startMessageQueue(messageQueue=None, name='messageQueue',
 
 
 def stopMessageQueue(messageQueue):
-    for x in xrange(len(messageQueue._processes)):
+    # Count the number of processes still alive
+    alive = [p for p in messageQueue._processes if p.is_alive()]
+
+    # Put as many STOP messages in the queue are there are alive processes
+    for p in alive:
         messageQueue.put('__STOP__', '')
 
     for process in messageQueue._processes:
