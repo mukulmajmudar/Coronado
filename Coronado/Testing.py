@@ -86,7 +86,7 @@ class AppTester(object):
 
         cmd = 'mysql --user=%s --password="%s" %s < %s' \
                 % (mysql['user'], mysql['password'], mysql['dbName'], 
-                        self.config['dbSchemaFileName'])
+                        mysql['schemaFileName'])
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Failed to install database schema')

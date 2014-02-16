@@ -62,7 +62,7 @@ class Application(object):
                 mysqlArgs=self.context['mysql'], 
                 messageHandlers=self.context['messageHandlers'])
 
-        self.tornadoApp.listen(self.context['tornado']['port'])
+        self.tornadoApp.listen(self.context['port'])
 
 
     def startEventLoop(self):
