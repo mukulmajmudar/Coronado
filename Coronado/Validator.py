@@ -13,12 +13,14 @@ class ValidationError(Exception):
 
 
 class Validator(object):
-    _validatee = None
-    _validationOrder = None
-
     def __init__(self, validatee, order, *args, **kwargs):
         self._validatee = validatee
         self._validationOrder = order
+        self._validateeIsObject = kwargs.get('validateeIsObject', False)
+        try:
+            del kwargs['validateeIsObject']
+        except KeyError:
+            pass
 
         super(Validator, self).__init__(*args, **kwargs)
 
@@ -66,7 +68,9 @@ class Validator(object):
         validator = getattr(self, validatorName)
 
         # Get the value to validate
-        value = getattr(self._validatee, key)
+        value = self._validateeIsObject \
+                and getattr(self._validatee, key) \
+                or self._validatee.get(key)
 
         try:
             # Make sure validator is callable
@@ -81,3 +85,9 @@ class Validator(object):
             f = tornado.concurrent.Future()
             f.set_exception(e)
             return f
+
+
+    _validatee = None
+    _validationOrder = None
+    _validateeIsObject = None
+

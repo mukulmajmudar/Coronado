@@ -50,6 +50,8 @@ class Application(object):
         if 'errorEmailer' not in self.context:
             self.context['errorEmailer'] = functools.partial(
                     Email.send, self.context['messageQueue'])
+        if 'getNewDbConnection' not in self.context:
+            self.context['getNewDbConnection'] = self._getDbConnection
 
         # Define url handler
         self.tornadoApp = tornado.web.Application(self._getUrlHandlers())

@@ -8,11 +8,13 @@ import os
 import json
 import tempfile
 from contextlib import closing
+import pdb
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 import tornado.testing
 
+from .HttpUtil import parseContentType
 from .Exceptions import IllegalArgument
 
 class TestEnvironmentError(Exception):
@@ -72,13 +74,13 @@ class AppTester(object):
 
         # Drop database if exists
         cmd = ('mysql --user=%s --password="%s" --execute="DROP DATABASE IF ' + \
-                'EXISTS %s"') % (mysql['user'], mysql['password'], 
+                'EXISTS \\`%s\\`"') % (mysql['user'], mysql['password'], 
                         mysql['dbName'])
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Failed to drop previous database')
 
-        cmd = 'mysql --user=%s --password="%s" --execute="CREATE DATABASE %s"' \
+        cmd = 'mysql --user=%s --password="%s" --execute="CREATE DATABASE \\`%s\\`"' \
                 % (mysql['user'], mysql['password'], mysql['dbName'])
         rc = os.system(cmd)
         if rc != 0:
@@ -100,12 +102,31 @@ class AppTester(object):
                 % (self.config['mysql']['user'],
                         self.config['mysql']['password'],
                         self.config['mysql']['dbName'],
-                        'DROP DATABASE ' + self.config['mysql']['dbName'])
+                        'DROP DATABASE \\`' + self.config['mysql']['dbName'] 
+                        + '\\`')
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Could not destroy database')
 
-class TestCase(tornado.testing.AsyncTestCase):
+class _TestRoot(tornado.testing.AsyncTestCase):
+    '''
+    Root class for TestCase and mixins. The purpose of this class is to 
+    consume the "context" constructor keyword arg before forwarding to 
+    AsyncTestCase.
+
+    Inspired by: 
+    http://rhettinger.wordpress.com/2011/05/26/super-considered-super/
+    '''
+
+    def __init__(self, *args, **kwargs):
+        try:
+            del kwargs['context']
+        except KeyError:
+            pass
+        super(_TestRoot, self).__init__(*args, **kwargs)
+
+
+class TestCase(_TestRoot):
 
     def __init__(self, *args, **kwargs):
         '''
@@ -113,12 +134,13 @@ class TestCase(tornado.testing.AsyncTestCase):
         containing at least the following mappings:
 
         ioloop => Tornado IOLoop to be used for this test case
+        httpClient => AsyncHTTPClient to be used for this test case
 
         The context argument will be available to subclasses as self._context.
         '''
         self._context = kwargs['context']
         self._ioloop = self._context['ioloop']
-        del kwargs['context']
+        self._httpClient = self._context['httpClient']
 
         # Call parent constructor
         super(TestCase, self).__init__(*args, **kwargs)
@@ -128,12 +150,20 @@ class TestCase(tornado.testing.AsyncTestCase):
         return self._ioloop
 
 
+    def _assertJsonResponse(self, httpResponse, charset='UTF-8'):
+        contentType, reqCharset = parseContentType(
+                httpResponse.headers.get('Content-Type'))
+        self.assertEqual(contentType, 'application/json')
+        self.assertEqual(reqCharset, charset)
+        return json.loads(httpResponse.body)
+
+
     _ioloop = None
 
 
-class DbFixtureTestCase(TestCase):
+class FixtureMixin(_TestRoot):
     '''
-    Test case with a database fixture.
+    Database fixture mixin for TestCase.
 
     Implement _getFixture() to return either a dictionary or a 
     JSON file path containing a fixture. The fixture should be
@@ -155,12 +185,12 @@ class DbFixtureTestCase(TestCase):
         self._mysqlArgs = context['mysql']
 
         # Call parent constructor
-        super(DbFixtureTestCase, self).__init__(*args, **kwargs)
+        super(FixtureMixin, self).__init__(*args, **kwargs)
 
 
     def setUp(self):
         # Call parent version
-        super(DbFixtureTestCase, self).setUp()
+        super(FixtureMixin, self).setUp()
 
         # Get the fixture
         fixture = self._getFixture()
@@ -198,7 +228,7 @@ class DbFixtureTestCase(TestCase):
         Truncate all tables.
         '''
         # Call parent version
-        super(DbFixtureTestCase, self).tearDown()
+        super(FixtureMixin, self).tearDown()
 
         # Credit: http://stackoverflow.com/a/8912749/1196816
         cmd = ("mysql -u %s -p'%s' -Nse 'show tables' %s " \
@@ -221,6 +251,9 @@ class DbFixtureTestCase(TestCase):
 
 
     def _installSelfFixture(self, fixture):
+        if 'tableOrder' not in fixture:
+            return
+
         # Install fixture into database
         for tableName in fixture['tableOrder']:
             for row in fixture[tableName]:
@@ -233,3 +266,109 @@ class DbFixtureTestCase(TestCase):
     _context = None
     _database = None
     _mysqlArgs = None
+
+
+def getInputSets(inputValues):
+    '''
+    Returns a generator for (isValid, inputSet, invalidKeys) triples, one for 
+    each combination of valid/invalid key-value pairs in the given input 
+    dictionary.
+    '''
+
+    keys = inputValues.keys()
+
+    def buildInputSet(keyIdx, inputSet, invalidKeys, isValid):
+        '''
+        Recursive function for building an input set.
+
+        Returns a generator.
+        '''
+
+        # Break recursion if all keys have been processed. A complete
+        # input set has been generated.
+        if keyIdx == len(keys):
+            yield isValid, inputSet, invalidKeys
+            return
+
+        # Read key at the given index
+        key = keys[keyIdx]
+
+        # For each valid value of the key
+        validValues = inputValues[key]['validValues']
+        for validValue in validValues:
+            # Set key's value in the input set
+            inputSet[key] = validValue
+
+            # Remove this key from the set of invalid keys if present
+            try:
+                invalidKeys.remove(key)
+            except KeyError:
+                pass
+
+            # Recurse for the next key. Each recursive call returns a 
+            # generator so we need to iterate through it.
+            for i, s, ik in buildInputSet(keyIdx + 1, inputSet, 
+                    invalidKeys, isValid):
+                yield i, s, ik
+
+        # For each invalid value of the key
+        invalidValues = inputValues[key]['invalidValues']
+        for invalidValue in invalidValues:
+            # Set this key's value in the input
+            inputSet[key] = invalidValue
+
+            # Add this key to the set of invalid keys
+            invalidKeys.add(key)
+
+            # Recurse for the next key. Each recursive call returns a 
+            # generator so we need to iterate through it.
+            for i, s, ik in buildInputSet(keyIdx + 1, inputSet, 
+                    invalidKeys, False):
+                yield i, s, ik
+
+
+    # Need as many for-loops as there are keys. 
+    # Solution: use recursion. For each input set to return, there will
+    # be one recursive call for each key. 
+    return buildInputSet(0, {}, set(), True)
+
+
+class InputSetsMixin(_TestRoot):
+
+    def setUp(self):
+        # Call parent version
+        super(InputSetsMixin, self).setUp()
+
+        # Load input values
+        self._inputValues = self._getInputValues()
+
+        # Get input values
+        inputValues = self._getInputValues()
+
+        # If return value is a file path, load it as JSON
+        if isinstance(inputValues, str):
+            inputValues = json.load(open(inputValues))
+
+        # inputValues must be a dictionary
+        if not isinstance(inputValues, dict):
+            raise IllegalArgument('input values description must be a '
+                + 'dictionary')
+
+        self._inputValues = inputValues
+
+
+    def testInputSets(self):
+        # Execute test function for each input set
+        for isValid, inputSet, invalidKeys in getInputSets(self._inputValues):
+            self._testInputSet(isValid, inputSet, invalidKeys)
+
+
+    def _testInputSet(self, isValid, inputSet, invalidKeys):
+        raise NotImplementedError()
+         
+
+    def _getInputValues(self):
+        raise NotImplementedError()
+
+
+    _inputValues = None

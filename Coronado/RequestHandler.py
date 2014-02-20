@@ -1,6 +1,10 @@
 import os
+from cStringIO import StringIO
+import traceback
+import json
 
 import tornado.web
+from .HttpUtil import parseContentType
 
 class ReqHandlerCfgError(Exception):
     pass
@@ -10,7 +14,7 @@ class RequestHandler(tornado.web.RequestHandler):
 
     def initialize(self, **kwargs):
         # Initialize context with defaults
-        self._context = \
+        self._context = RequestHandler._Context(
         {
             'allowedCORSOrigins': [],
             'sendEmailOnError': False,
@@ -18,10 +22,11 @@ class RequestHandler(tornado.web.RequestHandler):
             'errorEmailSubject': '[ERROR] Server Error Occurred',
             'errorEmailer': None,
             'errorTemplatesDir': None
-        }
+        })
 
         # Update context with arguments
         self._context.update(kwargs)
+        self._context.getNewDbConnection = kwargs.get('getNewDbConnection')
 
         # Validate context
         if self._context['sendEmailOnError']:
@@ -63,7 +68,9 @@ class RequestHandler(tornado.web.RequestHandler):
                 self.set_header('Access-Control-Allow-Headers', 
                     self.request.headers['Access-Control-Request-Headers'])
 
-            self.set_header('Access-Control-Expose-Headers', 'Auth-Token')
+            if 'authTokenHeaderName' in self._context:
+                self.set_header('Access-Control-Expose-Headers', 
+                        self._context['authTokenHeaderName'])
 
 
     def write_error(self, status, **kwargs):
@@ -80,23 +87,48 @@ class RequestHandler(tornado.web.RequestHandler):
                 self.set_header('Access-Control-Allow-Headers', 
                         self.request.headers['Access-Control-Request-Headers'])
 
-            self.set_header('Access-Control-Expose-Headers', 'Auth-Token')
+            if 'authTokenHeaderName' in self._context:
+                self.set_header('Access-Control-Expose-Headers', 
+                        self._context['authTokenHeaderName'])
 
 
-    def send_error(self, status=500, **kwargs):
-        if status >= 500 and self._context['sendEmailOnError']:
-            # Send error email
-            self._context['errorEmailer'](
-                    subject='[ERROR] CureCompanion Server Error Occurred',
+    def log_exception(self, typ, value, tb):
+        # Call parent version
+        super(RequestHandler, self).log_exception(typ, value, tb)
+
+        # If not sending error emails, return
+        if not self._context.get('sendEmailOnError'):
+            return
+
+        # Ignore if HTTPError < 500
+        if isinstance(value, tornado.web.HTTPError) and value.status_code < 500:
+            return
+
+        # Get a string of the stack trace
+        tbStringIO = StringIO()
+        traceback.print_exception(typ, value, tb, None, tbStringIO)
+        tbString = tbStringIO.getvalue()
+
+        # Send email to the configured recipient
+        self._context['errorEmailer'](
+                    subject=self._context['errorEmailSubject'],
                     recipient=self._context['errorEmailRecipient'],
-                    htmlFile=os.path.join(self._context['errorTemplatesDir'],
-                        'errorEmail.html'),
-                    textFile=os.path.join(self._context['errorTemplatesDir'],
-                        'errorEmail.txt'),
-                    templateArgs=dict(status=status))
+                    text=tbString)
 
-        # Call super method
-        super(RequestHandler, self).send_error(status, **kwargs)
+
+    def _getJsonBody(self, charset='UTF-8'):
+        contentType, reqCharset = parseContentType(
+                self.request.headers.get('Content-Type'))
+        if contentType != 'application/json' or reqCharset != charset:
+            raise tornado.web.HTTPError(415)
+        try:
+            return json.loads(self.request.body)
+        except ValueError as e:
+            raise tornado.web.HTTPError(415)
+
+
+    class _Context(dict):
+        getNewDbConnection = None
 
 
     _context = None
