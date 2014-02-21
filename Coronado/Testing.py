@@ -21,14 +21,11 @@ class TestEnvironmentError(Exception):
     pass
 
 
-class AppTester(object):
-    config = None
-    suiteBuilder = None
+class Scaffold(object):
     app = None
 
-    def __init__(self, config, appClass, suiteBuilder, *args, **kwargs):
-        self.config = config
-        self.suiteBuilder = suiteBuilder
+    def __init__(self, config, appClass, *args, **kwargs):
+        self._config = config
 
         # Create application
         self.app = appClass(config, *args, **kwargs)
@@ -40,37 +37,23 @@ class AppTester(object):
         self.app.setup()
 
 
-    def runTests(self):
-        try:
-            self.app.startListening()
-
-            # Build the test suite
-            suite = self.suiteBuilder(self.app.context)
-
-            # Run the suite
-            result = unittest.TestResult()
-            suite.run(result)
-
-            # Check for errors and failures
-            if result.errors:
-                for error in result.errors:
-                    print 'Error:\n' + error[1]
-            if result.failures:
-                for failure in result.failures:
-                    print 'Failure:\n' + failure[1]
-            if not result.errors and not result.failures:
-                print 'All tests passed successfully. Congratulations!'
-
-        finally:
-            # Destroy the app
-            self.app.destroy()
-
-            # Destroy the test database
-            self._destroyTestDatabase()
+    def destroy(self):
+        '''
+        Destroy the test database
+        '''
+        cmd = 'mysql --user=%s --password="%s" %s --execute="%s"' \
+                % (self._config['mysql']['user'],
+                        self._config['mysql']['password'],
+                        self._config['mysql']['dbName'],
+                        'DROP DATABASE \\`' + self._config['mysql']['dbName'] 
+                        + '\\`')
+        rc = os.system(cmd)
+        if rc != 0:
+            raise TestEnvironmentError('Could not destroy database')
 
 
     def _installTestDatabase(self):
-        mysql = self.config['mysql']
+        mysql = self._config['mysql']
 
         # Drop database if exists
         cmd = ('mysql --user=%s --password="%s" --execute="DROP DATABASE IF ' + \
@@ -94,19 +77,47 @@ class AppTester(object):
             raise TestEnvironmentError('Failed to install database schema')
 
 
-    def _destroyTestDatabase(self):
-        '''
-        Destroy the test database
-        '''
-        cmd = 'mysql --user=%s --password="%s" %s --execute="%s"' \
-                % (self.config['mysql']['user'],
-                        self.config['mysql']['password'],
-                        self.config['mysql']['dbName'],
-                        'DROP DATABASE \\`' + self.config['mysql']['dbName'] 
-                        + '\\`')
-        rc = os.system(cmd)
-        if rc != 0:
-            raise TestEnvironmentError('Could not destroy database')
+    _config = None
+
+
+class AppTester(Scaffold):
+
+    def __init__(self, config, appClass, suiteBuilder, *args, **kwargs):
+        super(AppTester, self).__init__(config, appClass, *args, **kwargs)
+        self._suiteBuilder = suiteBuilder
+
+
+    def runTests(self):
+        try:
+            self.app.startListening()
+
+            # Build the test suite
+            suite = self._suiteBuilder(self.app.context)
+
+            # Run the suite
+            result = unittest.TestResult()
+            suite.run(result)
+
+            # Check for errors and failures
+            if result.errors:
+                for error in result.errors:
+                    print 'Error:\n' + error[1]
+            if result.failures:
+                for failure in result.failures:
+                    print 'Failure:\n' + failure[1]
+            if not result.errors and not result.failures:
+                print 'All tests passed successfully. Congratulations!'
+
+        finally:
+            # Destroy the app
+            self.app.destroy()
+
+            # Destroy the test database
+            self.destroy()
+
+
+    _suiteBuilder = None
+
 
 class _TestRoot(tornado.testing.AsyncTestCase):
     '''
@@ -161,6 +172,20 @@ class TestCase(_TestRoot):
     _ioloop = None
 
 
+def installFixture(database, fixture):
+    if 'tableOrder' not in fixture:
+        return
+
+    # Install fixture into database
+    for tableName in fixture['tableOrder']:
+        for row in fixture[tableName]:
+            query = 'INSERT INTO ' + tableName + ' (' \
+                    + ','.join(row.keys()) \
+                    + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
+            with closing(database.cursor()) as cursor:
+                cursor.execute(query, tuple(row.values()))
+
+
 class FixtureMixin(_TestRoot):
     '''
     Database fixture mixin for TestCase.
@@ -193,7 +218,7 @@ class FixtureMixin(_TestRoot):
         super(FixtureMixin, self).setUp()
 
         # Get the fixture
-        fixture = self._getFixture()
+        fixture = self._getFixture() 
 
         # If fixture is a file path, load it as JSON
         if isinstance(fixture, str):
@@ -206,12 +231,12 @@ class FixtureMixin(_TestRoot):
         # If there is no "self" key in self.fixture, that means the
         # entire fixture dict is the self fixture
         if 'self' not in fixture:
-            self._installSelfFixture(fixture)
+            installFixture(self._database, fixture)
         else:
             # Fixtures for multiple apps are given
             for appName, fix in fixture.items():
                 if appName == 'self':
-                    self._installSelfFixture(fix)
+                    installFixture(self._database, fix)
                 else:
                     # Output fixture into a JSON file and wait for confirmation
                     # from user that it has been loaded into the correct app
@@ -249,19 +274,6 @@ class FixtureMixin(_TestRoot):
     def _getFixture(self):
         return {}
 
-
-    def _installSelfFixture(self, fixture):
-        if 'tableOrder' not in fixture:
-            return
-
-        # Install fixture into database
-        for tableName in fixture['tableOrder']:
-            for row in fixture[tableName]:
-                query = 'INSERT INTO ' + tableName + ' (' \
-                        + ','.join(row.keys()) \
-                        + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
-                with closing(self._database.cursor()) as cursor:
-                    cursor.execute(query, tuple(row.values()))
 
     _context = None
     _database = None

@@ -1,5 +1,9 @@
+import sys
 import functools
 from contextlib import closing
+import argparse
+import json
+import traceback
 
 import tornado.ioloop
 import tornado.httpclient
@@ -7,6 +11,7 @@ import MySQLdb
 from MySQLdb.cursors import DictCursor
 
 import Coronado
+import Coronado.Testing
 from .MySQLMessageQueue import MySQLMessageQueue
 from . import Email
 
@@ -100,3 +105,73 @@ class Application(object):
 
     def _getUrlHandlers(self):
         return []
+
+
+class AppStarter(object):
+
+    def __init__(self, config):
+        self._config = config
+
+
+    def start(self, *args, **kwargs):
+        app = None
+        scaffold = None
+        try:
+            # Parse command-line args
+            parser = argparse.ArgumentParser(description='Server starter')
+            parser.add_argument('--test', action='store_true', 
+                    help='Whether to start the application in test mode')
+            parser.add_argument('--fixture', type=file,
+                    help='Fixture file path, only applicable in test mode')
+            clArgs = parser.parse_args()
+            
+            if clArgs.test:
+                testsMod = __import__(self._config['testPkg'].__name__ + '.config')
+                config = testsMod.config.config
+
+                # Setup a testing scaffold
+                scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
+                        *args, **kwargs)
+                scaffold.setup()
+                app = scaffold.app
+
+                # Load test fixture if any
+                if clArgs.fixture is not None:
+                    fixture = json.load(clArgs.fixture)
+                    Coronado.Testing.installFixture(
+                            app.context['database'], fixture)
+
+                # Start listening for requests
+                scaffold.app.startListening()
+
+                # Start async event loop
+                scaffold.app.startEventLoop()
+
+            else:
+                # Create an application object and set it up.
+                #
+                # Startup code is placed into an "Application" class
+                # for easier testability. See testing pattern recommended by
+                # Bret Taylor (creator of Tornado) at:
+                # https://groups.google.com/d/msg/python-tornado/hnz7JmXqEKk/S2zkl6L9ctEJ
+                app = self._config['appClass'](self._config, *args, **kwargs)
+                app.setup()
+
+                # Start listening for requests
+                app.startListening()
+
+                # Start async event loop
+                app.startEventLoop()
+        except KeyboardInterrupt:
+            pass
+        except Exception as e:
+            sys.stderr.write(traceback.format_exc() + '\n')
+        finally:
+            if app is not None:
+                app.destroy()
+
+            if scaffold is not None:
+                scaffold.destroy()
+
+
+    _config = None
