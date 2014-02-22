@@ -96,7 +96,7 @@ class AppTester(Scaffold):
 
             # Parse command-line args
             argParser = argparse.ArgumentParser()
-            argParser.add_argument('--integration', action='store_true', 
+            argParser.add_argument('-i', '--integration', action='store_true', 
                     help='Run integration tests')
             argParser.add_argument('--all', action='store_true',
                     help='Run both unit and integration tests')
@@ -119,6 +119,8 @@ class AppTester(Scaffold):
 
             # Run the suite
             result = unittest.TestResult()
+            sys.stderr.write('Running ' + str(suite.countTestCases())
+                    + ' test cases...\n')
             suite.run(result)
 
             # Check for errors and failures
