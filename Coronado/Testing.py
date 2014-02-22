@@ -8,6 +8,7 @@ import os
 import json
 import tempfile
 from contextlib import closing
+import argparse
 import pdb
 
 import MySQLdb
@@ -82,17 +83,39 @@ class Scaffold(object):
 
 class AppTester(Scaffold):
 
-    def __init__(self, config, appClass, suiteBuilder, *args, **kwargs):
+    def __init__(self, config, appClass, unitSuiteBuilder, integSuiteBuilder, 
+            *args, **kwargs):
         super(AppTester, self).__init__(config, appClass, *args, **kwargs)
-        self._suiteBuilder = suiteBuilder
+        self._unitSuiteBuilder = unitSuiteBuilder
+        self._integSuiteBuilder = integSuiteBuilder
 
 
     def runTests(self):
         try:
             self.app.startListening()
 
+            # Parse command-line args
+            argParser = argparse.ArgumentParser()
+            argParser.add_argument('--integration', action='store_true', 
+                    help='Run integration tests')
+            argParser.add_argument('--all', action='store_true',
+                    help='Run both unit and integration tests')
+            argParser.add_argument('--unit', action='store_true',
+                    help='Run unit tests')
+            args = argParser.parse_args()
+
             # Build the test suite
-            suite = self._suiteBuilder(self.app.context)
+            suite = None
+            if args.all:
+                suite = unittest.TestSuite()
+                suite.addTest(self._unitSuiteBuilder())
+                suite.addTest(self._integSuiteBuilder())
+            elif args.integration:
+                suite = self._integSuiteBuilder(self.app.context)
+            else:
+                suite = self._unitSuiteBuilder(self.app.context)
+
+            assert suite is not None
 
             # Run the suite
             result = unittest.TestResult()
@@ -152,10 +175,14 @@ class TestCase(_TestRoot):
         httpClient => AsyncHTTPClient to be used for this test case
 
         The context argument will be available to subclasses as self._context.
+
+        An optional "testType" keyword argument ("unit" or "integration") can 
+        be given which will be stored as self._testType for subclasses.
         '''
         self._context = kwargs['context']
         self._ioloop = self._context['ioloop']
         self._httpClient = self._context['httpClient']
+        self._testType = kwargs.get('testType', 'unit')
 
         # Call parent constructor
         super(TestCase, self).__init__(*args, **kwargs)

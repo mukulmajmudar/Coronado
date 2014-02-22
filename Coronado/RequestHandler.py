@@ -20,8 +20,7 @@ class RequestHandler(tornado.web.RequestHandler):
             'sendEmailOnError': False,
             'errorEmailRecipient': None,
             'errorEmailSubject': '[ERROR] Server Error Occurred',
-            'errorEmailer': None,
-            'errorTemplatesDir': None
+            'errorEmailer': None
         })
 
         # Update context with arguments
@@ -37,10 +36,6 @@ class RequestHandler(tornado.web.RequestHandler):
             if self._context['errorEmailer'] is None \
                     or not callable(self._context['errorEmailer']):
                 raise ReqHandlerCfgError('errorEmailer argument is ' +
-                    'required in order to send errors.')
-
-            if self._context['errorTemplatesDir'] is None:
-                raise ReqHandlerCfgError('errorTemplatesDir argument is ' +
                     'required in order to send errors.')
 
         self._ioloop = self._context['ioloop']

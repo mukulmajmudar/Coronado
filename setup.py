@@ -9,7 +9,8 @@ setup(
     [
         'tornado',
         'MySQL-python',
-        'unittest2'
+        'unittest2',
+        'argparse'
     ],
     author='Mukul Majmudar',
     author_email='mukul@curecompanion.com',
