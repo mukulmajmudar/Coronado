@@ -68,9 +68,10 @@ class Validator(object):
         validator = getattr(self, validatorName)
 
         # Get the value to validate
-        value = self._validateeIsObject \
-                and getattr(self._validatee, key) \
-                or self._validatee.get(key)
+        if self._validateeIsObject:
+            value = getattr(self._validatee, key)
+        else:
+            value = self._validatee.get(key)
 
         try:
             # Make sure validator is callable

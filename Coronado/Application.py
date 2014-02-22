@@ -119,9 +119,9 @@ class AppStarter(object):
         try:
             # Parse command-line args
             parser = argparse.ArgumentParser(description='Server starter')
-            parser.add_argument('--test', action='store_true', 
+            parser.add_argument('-t', '--test', action='store_true', 
                     help='Whether to start the application in test mode')
-            parser.add_argument('--fixture', type=file,
+            parser.add_argument('-f', '--fixture', type=file,
                     help='Fixture file path, only applicable in test mode')
             clArgs = parser.parse_args()
             

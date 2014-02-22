@@ -122,8 +122,8 @@ class AppTester(Scaffold):
 class _TestRoot(tornado.testing.AsyncTestCase):
     '''
     Root class for TestCase and mixins. The purpose of this class is to 
-    consume the "context" constructor keyword arg before forwarding to 
-    AsyncTestCase.
+    consume the "context" and "testType" constructor keyword args before 
+    forwarding to AsyncTestCase.
 
     Inspired by: 
     http://rhettinger.wordpress.com/2011/05/26/super-considered-super/
@@ -132,6 +132,10 @@ class _TestRoot(tornado.testing.AsyncTestCase):
     def __init__(self, *args, **kwargs):
         try:
             del kwargs['context']
+        except KeyError:
+            pass
+        try:
+            del kwargs['testType']
         except KeyError:
             pass
         super(_TestRoot, self).__init__(*args, **kwargs)
@@ -169,6 +173,7 @@ class TestCase(_TestRoot):
         return json.loads(httpResponse.body)
 
 
+    _context = None
     _ioloop = None
 
 
@@ -203,7 +208,6 @@ class FixtureMixin(_TestRoot):
         database => MySQL database connection
         mysql => dictionary of MySQL connection arguments: must contain at least
                  user, password, dbName
-        ioloop => Tornado IOLoop to be used for this test case
         '''
         context = kwargs['context']
         self._database = context['database']
@@ -243,6 +247,7 @@ class FixtureMixin(_TestRoot):
                     f = tempfile.NamedTemporaryFile(prefix=appName + '-', suffix='.json',
                             delete=False)
                     json.dump(fix, f)
+                    f.flush()
                     raw_input(('Please load the file "%s" into a test ' +
                         'instance of "%s". Press ENTER to continue.') 
                         % (f.name, appName))
@@ -254,6 +259,9 @@ class FixtureMixin(_TestRoot):
         '''
         # Call parent version
         super(FixtureMixin, self).tearDown()
+
+        if self._mysqlArgs is None:
+            return
 
         # Credit: http://stackoverflow.com/a/8912749/1196816
         cmd = ("mysql -u %s -p'%s' -Nse 'show tables' %s " \
@@ -275,7 +283,6 @@ class FixtureMixin(_TestRoot):
         return {}
 
 
-    _context = None
     _database = None
     _mysqlArgs = None
 
