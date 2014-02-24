@@ -37,6 +37,10 @@ def startMessageQueue(messageQueue=None, name='messageQueue',
 
 
 def stopMessageQueue(messageQueue):
+    # If message queue was never started, return
+    if not hasattr(messageQueue, '_processes'):
+        return
+
     # Count the number of processes still alive
     alive = [p for p in messageQueue._processes if p.is_alive()]
 
