@@ -10,7 +10,8 @@ setup(
         'tornado',
         'MySQL-python',
         'unittest2',
-        'argparse'
+        'argparse',
+        'pycurl'
     ],
     author='Mukul Majmudar',
     author_email='mukul@curecompanion.com',

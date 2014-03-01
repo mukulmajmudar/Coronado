@@ -40,10 +40,12 @@ class Application(object):
         if 'database' not in self.context:
             self.context['database'] = self._getDbConnection()
         if 'httpClient' not in self.context:
+            '''
             # Configure AsyncHTTPClient to use cURL implementation
             tornado.httpclient.AsyncHTTPClient.configure(
                     "tornado.curl_httpclient.CurlAsyncHTTPClient",
                     max_clients=5000)
+            '''
             self.context['httpClient'] = tornado.httpclient.AsyncHTTPClient(
                     self.context['ioloop'])
         if 'messageQueue' not in self.context:
