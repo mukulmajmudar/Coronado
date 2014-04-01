@@ -41,6 +41,9 @@ def when(*args, **kwargs):
             onFutureDone(index, f)
         index += 1
 
+    if numFutures == 0:
+        future.set_result([])
+
     return future
 
 
