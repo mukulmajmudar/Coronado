@@ -42,7 +42,7 @@ def when(*args, **kwargs):
         index += 1
 
     if numFutures == 0:
-        future.set_result([])
+        future.set_result(tuple())
 
     return future
 
