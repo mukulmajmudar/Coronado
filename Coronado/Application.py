@@ -67,6 +67,8 @@ class Application(object):
         # Define url handler
         self.tornadoApp = tornado.web.Application(self._getUrlHandlers())
 
+        self.context['tornadoApp'] = self.tornadoApp
+
 
     def startListening(self):
         # Start the message queue

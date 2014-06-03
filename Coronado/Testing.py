@@ -194,6 +194,10 @@ class TestCase(_TestRoot):
         return self._ioloop
 
 
+    def get_app(self):
+        return self._context['tornadoApp']
+
+
     def _assertJsonResponse(self, httpResponse, charset='UTF-8'):
         contentType, reqCharset = parseContentType(
                 httpResponse.headers.get('Content-Type'))
