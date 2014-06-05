@@ -10,6 +10,8 @@ def when(*args, **kwargs):
     # If ioloop not given, use the current one
     ioloop = kwargs.get('ioloop', IOLoop.current())
 
+    makeTuple = kwargs.get('makeTuple', False)
+
     future = tornado.concurrent.Future()
     numDone = [0]
     numFutures = len(args)
@@ -19,7 +21,7 @@ def when(*args, **kwargs):
         result[index] = f
         numDone[0] += 1
         if numDone[0] == numFutures:
-            if numFutures > 1:
+            if numFutures > 1 or makeTuple:
                 future.set_result(tuple(result))
             else:
                 tornado.concurrent.chain_future(f, future)

@@ -42,6 +42,19 @@ class RequestHandler(tornado.web.RequestHandler):
         self._database = self._context['database']
         self._httpClient = self._context['httpClient']
 
+        # Store public and non-public context attributes as self's attributes 
+        # for ease of access in request handlers
+        try:
+            for key in self._context['flatten']['public']:
+                setattr(self, key, self._context[key])
+        except KeyError:
+            pass
+        try:
+            for key in self._context['flatten']['non-public']:
+                setattr(self, '_' + key, self._context[key])
+        except KeyError:
+            pass
+
 
     def options(self, *args, **kwargs):
         pass
