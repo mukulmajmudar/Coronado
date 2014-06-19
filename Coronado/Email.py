@@ -6,22 +6,14 @@ import string
 import sys
 import logging
 
-def send(messageQueue, subject, recipient, text=None, htmlFile=None,
-    textFile=None, templateArgs=None):
-    messageQueue.put('email', json.dumps(
-        dict(subject=subject, recipient=recipient, htmlFile=htmlFile,
-            text=text, textFile=textFile, templateArgs=templateArgs)))
+from Worker import WorkHandler
 
 
-class MessageHandler(object):
-    smtpArgs = None
+
+class SendEmail(WorkHandler):
      
-    def __init__(self, smtpArgs):
-        self.smtpArgs = smtpArgs
-
-
-    def __call__(self, message):
-        message = json.loads(message) 
+    def __call__(self):
+        message = self.request.message
 
         # Get parameters from the message
         recipient = message.get('recipient')
@@ -42,11 +34,13 @@ class MessageHandler(object):
                     + 'does not have a body.') 
             return
 
+        smtpArgs = self._context['smtp']
+
         # Assemble message
         emailMsg = text is not None and MIMEText(text) \
                 or MIMEMultipart('alternative')
         emailMsg['Subject'] = message['subject']
-        emailMsg['From'] = self.smtpArgs['email']
+        emailMsg['From'] = smtpArgs['email']
         emailMsg['To'] = message['recipient']
 
         if textFile is not None:
@@ -79,14 +73,14 @@ class MessageHandler(object):
             emailMsg.attach(part2)
 
         # Login to our email provider
-        s = smtplib.SMTP(host=self.smtpArgs['host'], 
-                port=self.smtpArgs['port'])
+        s = smtplib.SMTP(host=smtpArgs['host'], 
+                port=smtpArgs['port'])
         try:
             x = s.starttls()
-            s.login(self.smtpArgs['email'], self.smtpArgs['password'])
+            s.login(smtpArgs['email'], smtpArgs['password'])
 
             # Send the message
-            s.sendmail(self.smtpArgs['email'], 
+            s.sendmail(smtpArgs['email'], 
                     message['recipient'], emailMsg.as_string())
         finally:
             s.quit()

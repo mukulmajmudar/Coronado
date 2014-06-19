@@ -12,16 +12,31 @@ from MySQLdb.cursors import DictCursor
 
 import Coronado
 import Coronado.Testing
-from .MySQLMessageQueue import MySQLMessageQueue
 from . import Email
+import RabbitMQ
+
+workerClasses = \
+{
+    'RabbitMQ': RabbitMQ.Worker
+}
+
 
 class Application(object):
+    '''
+    Coronado Application base class.
+
+    Subclass this and add application startup code. Enables easier testability.
+    See testing pattern recommended by Bret Taylor (creator of Tornado) at:
+    https://groups.google.com/d/msg/python-tornado/hnz7JmXqEKk/S2zkl6L9ctEJ
+    '''
+
     config = None
     context = None
     tornadoApp = None
 
-    def __init__(self, config):
+    def __init__(self, config, workerMode=False):
         self.config = config
+        self._workerMode = workerMode
 
 
     def setup(self, context=None):
@@ -48,19 +63,7 @@ class Application(object):
             '''
             self.context['httpClient'] = tornado.httpclient.AsyncHTTPClient(
                     self.context['ioloop'])
-        if 'messageQueue' not in self.context:
-            self.context['messageQueue'] = MySQLMessageQueue(
-                    self.context['mysql'])
-        if 'messageHandlers' not in self.context:
-            self.context['messageHandlers'] = dict(
-                    email=Coronado.Email.MessageHandler(self.context['smtp']))
-        else:
-            if 'email' not in self.context['messageHandlers']:
-                self.context['messageQueue']['email'] \
-                        = Coronado.Email.MessageHandler(self.context['smtp'])
-        if 'errorEmailer' not in self.context:
-            self.context['errorEmailer'] = functools.partial(
-                    Email.send, self.context['messageQueue'])
+
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
 
@@ -69,13 +72,37 @@ class Application(object):
 
         self.context['tornadoApp'] = self.tornadoApp
 
+        # Setup a worker if configured
+        worker = self.context.get('worker')
+        if worker:
+            # Get app-specific work handlers
+            handlers = self._getWorkHandlers()
+
+            # If an email work key is configured, add an email work handler
+            emailWorkKey = self.context.get('emailWorkKey')
+            if emailWorkKey is not None:
+                handlers.append(
+                    (emailWorkKey, Coronado.Email.SendEmail, self.context))
+
+            # Setup a worker
+            workerType = worker['type']
+            del worker['type']
+            worker = self.context['worker'] = workerClasses[workerType](
+                    handlers=handlers, **worker)
+            worker.setup()
+
+            self._addToContextFlatten(
+            {
+                'non-public': ['worker']
+            })
+
+            if self._workerMode:
+                worker.start()
+
 
     def startListening(self):
-        # Start the message queue
-        Coronado.startMessageQueue(
-                messageQueue=self.context['messageQueue'],
-                mysqlArgs=self.context['mysql'], 
-                messageHandlers=self.context['messageHandlers'])
+        if self._workerMode:
+            return
 
         self.tornadoApp.listen(self.context['port'])
 
@@ -89,7 +116,7 @@ class Application(object):
 
 
     def destroy(self):
-        Coronado.stopMessageQueue(self.context['messageQueue'])
+        pass
 
 
     def _getDbConnection(self):
@@ -113,6 +140,25 @@ class Application(object):
 
     def _getUrlHandlers(self):
         return []
+
+
+    def _getWorkHandlers(self):
+        return []
+
+
+    def _addToContextFlatten(self, attrKeys):
+        flatten = self.context.get('flatten', {})
+        for attrType, keys in attrKeys.iteritems():
+            if attrType in flatten:
+                for key in keys:
+                    flatten[attrType].append(key)
+            else:
+                flatten[attrType] = keys[:]
+        self.context['flatten'] = flatten
+
+
+
+    _workerMode = None
 
 
 class AppStarter(object):

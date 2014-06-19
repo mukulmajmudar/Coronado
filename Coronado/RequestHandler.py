@@ -20,7 +20,7 @@ class RequestHandler(tornado.web.RequestHandler):
             'sendEmailOnError': False,
             'errorEmailRecipient': None,
             'errorEmailSubject': '[ERROR] Server Error Occurred',
-            'errorEmailer': None
+            'worker': None
         })
 
         # Update context with arguments
@@ -33,10 +33,10 @@ class RequestHandler(tornado.web.RequestHandler):
                 raise ReqHandlerCfgError('errorEmailRecipient argument is ' +
                     'required in order to send errors')
 
-            if self._context['errorEmailer'] is None \
-                    or not callable(self._context['errorEmailer']):
-                raise ReqHandlerCfgError('errorEmailer argument is ' +
-                    'required in order to send errors.')
+            if self._context['worker'] is None:
+                raise ReqHandlerCfgError('A worker is required in order to ' +
+                    'send error emails')
+
 
         self._ioloop = self._context['ioloop']
         self._database = self._context['database']
@@ -118,10 +118,30 @@ class RequestHandler(tornado.web.RequestHandler):
         tbString = tbStringIO.getvalue()
 
         # Send email to the configured recipient
-        self._context['errorEmailer'](
-                    subject=self._context['errorEmailSubject'],
-                    recipient=self._context['errorEmailRecipient'],
-                    text=tbString)
+        self._worker.queue(self._context['emailWorkKey'], 
+        {
+            'subject': self._context['errorEmailSubject'],
+            'recipient': self._context['errorEmailRecipient'],
+            'text': tbString
+        })
+
+
+    def write(self, chunk, finish=False):
+        '''
+        If chunk is a list, converts it to a JSON string and sets response 
+        content-type as JSON before passing it to this method's parent version.
+
+        If finish is True, calls self.finish() after writing
+        '''
+
+        if isinstance(chunk, list):
+            self.set_header('Content-Type', 'application/json; charset=UTF-8')
+            chunk = json.dumps(chunk)
+
+        returnValue = super(RequestHandler, self).write(chunk)
+        if finish:
+            self.finish()
+        return returnValue
 
 
     def _getJsonBody(self, charset='UTF-8'):
