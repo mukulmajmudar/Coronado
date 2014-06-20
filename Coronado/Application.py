@@ -88,7 +88,8 @@ class Application(object):
             workerType = worker['type']
             del worker['type']
             worker = self.context['worker'] = workerClasses[workerType](
-                    handlers=handlers, **worker)
+                    handlers=handlers, 
+                    type=self._workerMode and 'worker' or 'proxy', **worker)
             worker.setup()
 
             self._addToContextFlatten(
@@ -96,8 +97,7 @@ class Application(object):
                 'non-public': ['worker']
             })
 
-            if self._workerMode:
-                worker.start()
+            worker.start()
 
 
     def startListening(self):
