@@ -4,6 +4,7 @@ import sys
 from datetime import timedelta
 from functools import partial
 from uuid import uuid4
+import logging
 
 import tornado.web
 from tornado import escape
@@ -11,10 +12,166 @@ from tornado.ioloop import IOLoop
 
 from Concurrent import when
 
-class ResponseTimeout(Exception):
+# Logger for this module
+logger = logging.getLogger(__name__)
+
+class RequestError(Exception):
     pass
 
-class Worker(object):
+
+class ResponseTimeout(RequestError):
+    pass
+
+
+class WorkerInterface(object):
+
+    def setup(self):
+        raise NotImplementedError()
+
+
+    def start(self):
+        raise NotImplementedError()
+
+
+class WorkerProxy(WorkerInterface):
+
+    def __init__(self, ioloop=None):
+        self._ioloop = ioloop is not None and ioloop or IOLoop.current()
+
+
+    def request(self, tag, body, contentType='application/json',
+            contentEncoding='utf-8', expectResponse=False, 
+            timeout=timedelta(seconds=60), **kwargs):
+        '''
+        Send a request to a worker.
+
+        Keyword arguments:
+        ------------------
+        tag: Work tag that is mapped to the desired work handler.
+        body: Request body
+        contentType: Content type of the body (default: 'application/json')
+        contentEncoding: Encoding of the body (default: 'utf-8')
+        expectResponse: Whether to expect a response for this 
+          request (default: False)
+        timeout: Timeout for the request (default: 60 seconds)
+        '''
+
+        logger.info('Sending request with tag %s to worker', tag)
+
+        requestFuture = tornado.concurrent.Future()
+
+        # Convert dictionaries and lists to JSON if content type is JSON
+        if (isinstance(body, dict) or isinstance(body, list)) \
+                and contentType == 'application/json':
+            body = json.dumps(body, encoding=contentEncoding)
+
+        # If we are expecting a response, generate a request ID 
+        requestId = expectResponse and uuid4().hex or None
+
+        # Delegate actual sending to subclass
+        requestResult = self._request(
+                id=requestId,
+                tag=tag, 
+                body=body, 
+                contentType=contentType,
+                contentEncoding=contentEncoding, 
+                **kwargs)
+
+        self._ioloop.add_future(when(requestResult),
+                partial(self._onRequestSent, requestFuture, 
+                    expectResponse, requestId, timeout))
+
+        return requestFuture
+
+
+    def _request(self, id, tag, body, contentType, contentEncoding,
+            **kwargs):
+        '''
+        Implementation method for subclasses to send work requests.
+        '''
+        raise NotImplementedError()
+
+
+    def _onRequestSent(self, requestFuture, expectResponse, requestId, 
+            timeout, implFuture):
+        '''
+        When request is sent, store request ID, if set
+        '''
+        try:
+            # Trap exceptions, if any
+            implFuture.result()
+        except Exception as e:
+            requestFuture.set_exception(e)
+        else:
+            logger.info('Worker request sent')
+            # If we are expecting a response, we store our future for some time
+            if expectResponse:
+                assert(requestId is not None)
+                WorkerProxy._requestFutures[requestId] = requestFuture
+
+                # If our future is still stored after a while, remove it and
+                # set an error on it
+                # TODO: Remove timeout on successful response
+                def removeFuture():
+                    if requestId in WorkerProxy._requestFutures:
+                        logger.info('Worker request timed out')
+                        requestFuture.set_exception(ResponseTimeout())
+                        del WorkerProxy._requestFutures[requestId]
+                self._ioloop.add_timeout(timeout, removeFuture)
+            else:
+                # Not expecting a response and the request has been sent, so
+                # resolve the request future
+                requestFuture.set_result(None)
+
+
+    def _onResponse(self, requestId, body, contentType, contentEncoding):
+        '''
+        Resolve the request with the given ID.
+
+        This should be called by subclasses when they receive a response.
+        '''
+        logger.info('Response received for request %s (partial): %s', 
+                requestId, body[0:100])
+        try:
+            requestFuture = WorkerProxy._requestFutures[requestId]
+        except KeyError:
+            logger.info('No known request with ID %s (maybe timed out)',
+                    requestId)
+        else:
+            # Convert body to dictionary from JSON if content type is JSON
+            if contentType == 'application/json':
+                response = json.loads(body, encoding=contentEncoding)
+
+                # Set exception if error returned
+                if isinstance(response, dict):
+                    error = response.get('error')
+                    if error:
+                        requestFuture.set_exception(RequestError(error))
+                    else:
+                        # No error, so set result
+                        requestFuture.set_result(response)
+                else:
+                    requestFuture.set_result(response)
+            else:
+                response = \
+                {
+                    'contentType': contentType,
+                    'contentEncoding': contentEncoding,
+                    'body': body
+                }
+                requestFuture.set_result(response)
+            del WorkerProxy._requestFutures[requestId]
+
+
+    # Non-public instance attributes
+    _ioloop = None
+
+
+    # Non-public class attributes
+    _requestFutures = {}
+
+
+class Worker(WorkerInterface):
     '''
     Abstract base class for workers.
     '''
@@ -25,183 +182,113 @@ class Worker(object):
         self._ioloop = ioloop is not None and ioloop or IOLoop.current()
 
 
-    def setup(self):
-        raise NotImplementedError()
-        
-
-    def queue(self, key=None, message='null', contentType='application/json',
-            contentEncoding='utf-8', expectResponse=False,
-            correlationId=None, **kwargs):
-        '''
-        Queue a message on the worker.
-
-        Keyword arguments:
-        ------------------
-        key: Work key that is mapped to the work handler. For responses from 
-          workers, it is OK to omit this argument (default: None).
-        message: Message to queue (default: 'null')
-        contentType: Content type of the message (default: 'application/json')
-        contentEncoding: Encoding of the message (default: 'utf-8')
-        expectResponse: Whether to expect a response for this 
-          message (default: False)
-        correlationId: If this message is a response, pass the request's
-          correlation ID here (default: None).
-        '''
-        queueFuture = tornado.concurrent.Future()
-
-        # Convert dictionaries and lists to JSON if content type is JSON
-        if (isinstance(message, dict) or isinstance(message, list)) \
-                and contentType == 'application/json':
-            message = json.dumps(message, encoding=contentEncoding)
-
-        # If no correlation ID given and we are expecting a response, generate
-        # a correlation ID (just a plain old ID for the "request")
-        if correlationId is None and expectResponse:
-            correlationId = uuid4()
-
-        # Delegate actual queueing to subclass method
-        queueResult = self._queue(
-                key=key, 
-                message=message, 
-                contentType=contentType,
-                contentEncoding=contentEncoding, 
-                correlationId=correlationId, 
-                **kwargs)
-
-        self._ioloop.add_future(when(queueResult),
-                partial(self._onQueued, queueFuture, 
-                    expectResponse, correlationId))
-
-        return queueFuture
-
-
-    def start(self):
-        '''
-        Start consuming messages from the queue.
-        '''
+    def respond(self, requestId, body, contentType, contentEncoding):
         raise NotImplementedError()
 
 
-    def _queue(self, key, message, contentType, contentEncoding,
-            correlationId, **kwargs):
-        '''
-        Implementation method for subclasses to perform queueing.
-        '''
-        raise NotImplementedError()
-
-
-    def _onQueued(self, queueFuture, expectResponse, correlationId, implFuture):
-        '''
-        When queue operation is complete, store correlation ID for requests
-        '''
-        try:
-            # Trap exceptions, if any
-            implFuture.result()
-        except Exception as e:
-            queueFuture.set_exception(e)
-        else:
-            # If we are expecting an response and a correlation ID was 
-            # returned, we store our future for some time
-            if expectResponse:
-                assert(correlationId is not None)
-                Worker._queueFutures[correlationId] = queueFuture
-
-                # If our future is still stored after a while, remove it and
-                # set an error on it
-                def removeFuture():
-                    if correlationId in Worker._queueFutures:
-                        queueFuture.set_exception(ResponseTimeout())
-                        del Worker._queueFutures[correlationId]
-                self._ioloop.add_timeout(
-                        Worker._responseTimeout, removeFuture)
-
-
-    def _onMessage(self, key, message, contentType, contentEncoding,
-            correlationId):
+    def _onRequest(self, id, tag, body, contentType, contentEncoding):
         '''
         Callback for handling messages, called by subclasses.
         '''
-        # If this is a worker, execute route with message's key
-        if self._type == 'worker':
-            self._execute(key, message, contentType, contentEncoding, 
-                    correlationId)
-        elif self._type == 'proxy' and key is None:
-            # If proxy and key is None, this is a response
-            self._resolveRequest(correlationId, 
-                    message, contentType, contentEncoding)
-
-
-    def _execute(self, key, message, contentType, 
-            contentEncoding, correlationId):
+        logger.info('Request received for tag %s (may be partial): %s', 
+                tag, body[0:50])
+        logger.debug('Request ID: %s', id)
+        logger.debug('Request body (may be partial): %s', body[0:1000])
         try:
-            # Convert message to dictionary from JSON if content type is JSON
+            # Convert body to dictionary from JSON if content type is JSON
             if contentType == 'application/json':
-                message = json.loads(message, encoding=contentEncoding)
+                body = json.loads(body, encoding=contentEncoding)
 
-            # Find handler that matches the key. This code is mostly copied from 
-            # Tornado v3.2's URL spec matching in tornado.web.Application.
-            handler = None
-            args = []
-            kwargs = {}
-            for spec in self._handlers:
-                match = spec.regex.match(key)
-                if match:
-                    handler = spec.handler_class(
-                        WorkRequest(key, message, correlationId), **spec.kwargs)
-                    if spec.regex.groups:
-                        # None-safe wrapper around url_unescape to handle
-                        # unmatched optional groups correctly
-                        def unquote(s):
-                            if s is None:
-                                return s
-                            return escape.url_unescape(s, encoding=None,
-                                                       plus=False)
-                        # Pass matched groups to the handler.  Since
-                        # match.groups() includes both named and unnamed groups,
-                        # we want to use either groups or groupdict but not both.
-                        # Note that args are passed as bytes so the handler can
-                        # decide what encoding to use.
+            # Find handler for the given work tag
+            handler, args, kwargs = self._findHandler(
+                    id, tag, body, contentType, contentEncoding)
+            if handler is None:
+                raise RequestError('No handler found for tag %s' % (tag,))
 
-                        if spec.regex.groupindex:
-                            kwargs = dict(
-                                (str(k), unquote(v))
-                                for (k, v) in match.groupdict().items())
-                        else:
-                            args = [unquote(s) for s in match.groups()]
-                    break
+            # Call the work handler
+            result = handler(*args, **kwargs)
 
-            handler(*args, **kwargs)
-        except:
-            sys.stderr.write(traceback.format_exc() + '\n')
-            sys.stderr.flush()
+        except Exception as e:
+            trace = traceback.format_exc()
+            logging.error(trace)
 
-
-    def _resolveRequest(self, correlationId, result, 
-            contentType, contentEncoding):
-        '''
-        Resolve the request with the given correlation ID.
-
-        This should be called by subclasses of type 'proxy' when
-        they receive a message without a key and .
-        '''
-        try:
-            queueFuture = Worker._queueFutures[correlationId]
-        except KeyError:
-            pass
+            # If response expected, return an error response
+            if id is not None:
+                self.respond(id, {'error': str(e)}, 'application/json', 'utf-8')
         else:
-            # Convert message to dictionary from JSON if content type is JSON
-            if contentType == 'application/json':
-                result = json.loads(result, encoding=contentEncoding)
-            else:
-                result = \
-                {
-                    'contentType': contentType,
-                    'contentEncoding': contentEncoding,
-                    'body': result
-                }
-            queueFuture.set_result(result)
-            del Worker._queueFutures[correlationId]
+            # If no request ID, don't do anything
+            if id is None:
+                return
 
+            # Respond when the worker operation is complete
+            self._ioloop.add_future(when(result), partial(self._respond, id))
+
+
+    def _findHandler(self, id, tag, body, contentType, contentEncoding):
+        # Find handler that matches the given tag. This code is mostly copied 
+        # from Tornado v3.2's URL spec matching in tornado.web.Application.
+        handler = None
+        args = []
+        kwargs = {}
+        for spec in self._handlers:
+            match = spec.regex.match(tag)
+            if match:
+                handler = spec.handler_class(
+                    WorkRequest(id, tag, body, contentType, 
+                        contentEncoding), **spec.kwargs)
+                if spec.regex.groups:
+                    # None-safe wrapper around url_unescape to handle
+                    # unmatched optional groups correctly
+                    def unquote(s):
+                        if s is None:
+                            return s
+                        return escape.url_unescape(s, encoding=None,
+                                                   plus=False)
+                    # Pass matched groups to the handler.  Since
+                    # match.groups() includes both named and unnamed groups,
+                    # we want to use either groups or groupdict but not both.
+                    # Note that args are passed as bytes so the handler can
+                    # decide what encoding to use.
+
+                    if spec.regex.groupindex:
+                        kwargs = dict(
+                            (str(k), unquote(v))
+                            for (k, v) in match.groupdict().items())
+                    else:
+                        args = [unquote(s) for s in match.groups()]
+                break
+
+        return handler, args, kwargs
+
+
+    def _respond(self, requestId, resultFuture):
+        try:
+            result = resultFuture.result()
+        except Exception as e:
+            trace = traceback.format_exc()
+            logging.error(trace)
+
+            self.respond(requestId, json.dumps(dict(error=str(e))), 
+                    'application/json', 'utf-8')
+        else:
+            # Respond with the worker's result
+            if result is None or isinstance(result, dict) \
+                    or isinstance(result, list):
+                result = json.dumps(result, encoding='utf-8')
+                contentType = 'application/json'
+                contentEncoding = 'utf-8'
+            elif isinstance(result, tuple):
+                result, contentType, contentEncoding = result
+            else:
+                # Other return values not supported
+                logging.warning('Result value of type %s not supported', 
+                        str(type(result)))
+                self.respond(requestId, json.dumps(
+                    dict(error='Worker error: unsupported result type')),
+                    'application/json', 'utf-8')
+                return
+
+            self.respond(requestId, result, contentType, contentEncoding)
 
 
     # Non-public instance attributes
@@ -209,21 +296,22 @@ class Worker(object):
     _type = None
     _ioloop = None
 
-    # Non-public class attributes
-    _queueFutures = {}
-    _responseTimeout = timedelta(seconds=60)
-
 
 class WorkRequest(object):
-    key = None
-    message = None
-    correlationId = None
+    # Public instance attributes
+    id = None
+    tag = None
+    body = None
+    contentType = None
+    contentEncoding = None
 
 
-    def __init__(self, key, message, correlationId):
-        self.key = key
-        self.message = message
-        self.correlationId = correlationId
+    def __init__(self, id, tag, body, contentType, contentEncoding):
+        self.id = id
+        self.tag = tag
+        self.body = body
+        self.contentType = contentType
+        self.contentEncoding = contentEncoding
 
 
 class WorkHandlerCfgError(Exception):
@@ -231,6 +319,7 @@ class WorkHandlerCfgError(Exception):
 
 
 class WorkHandler(object):
+    # Public instance attributes
     request = None
 
 
@@ -284,11 +373,20 @@ class WorkHandler(object):
 
 
     def __call__(self):
-        pass
+        '''
+        Execution method for the worker. 
+        
+        Implement this with your own domain logic. Any return value from
+        this method will be sent back to the requestor, but only if it is 
+        expecting a response. If the operation this method performs is 
+        asynchronous, return a future.
+        '''
+        raise NotImplementedError()
 
 
     class _Context(dict):
         getNewDbConnection = None
 
 
+    # Non-public instance attributes
     _context = None

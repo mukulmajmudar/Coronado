@@ -17,7 +17,11 @@ import RabbitMQ
 
 workerClasses = \
 {
-    'RabbitMQ': RabbitMQ.Worker
+    'RabbitMQ': 
+    {
+        'worker': RabbitMQ.Worker,
+        'proxy': RabbitMQ.WorkerProxy
+    }
 }
 
 
@@ -75,29 +79,35 @@ class Application(object):
         # Setup a worker if configured
         worker = self.context.get('worker')
         if worker:
-            # Get app-specific work handlers
-            handlers = self._getWorkHandlers()
-
-            # If an email work key is configured, add an email work handler
-            emailWorkKey = self.context.get('emailWorkKey')
-            if emailWorkKey is not None:
-                handlers.append(
-                    (emailWorkKey, Coronado.Email.SendEmail, self.context))
-
-            # Setup a worker
             workerType = worker['type']
             del worker['type']
-            worker = self.context['worker'] = workerClasses[workerType](
-                    handlers=handlers, 
-                    type=self._workerMode and 'worker' or 'proxy', **worker)
+            classes = workerClasses[workerType]
+
+            # Setup a worker or proxy based on mode
+            if self._workerMode:
+                # Get app-specific work handlers
+                handlers = self._getWorkHandlers()
+
+                # If an email work tag is configured, add an email work handler
+                emailWorkTag = self.context.get('emailWorkTag')
+                if emailWorkTag is not None:
+                    handlers.append(
+                        (emailWorkTag, Coronado.Email.SendEmail, self.context))
+
+                # Create a worker
+                worker = self.context['worker'] = classes['worker'](
+                        handlers=handlers, **worker)
+            else:
+                # Create a worker proxy
+                worker = self.context['worker'] = classes['proxy'](**worker)
+
             worker.setup()
+            worker.start()
 
             self._addToContextFlatten(
             {
                 'non-public': ['worker']
             })
-
-            worker.start()
 
 
     def startListening(self):

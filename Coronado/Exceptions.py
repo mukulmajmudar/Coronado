@@ -3,3 +3,6 @@ class IllegalArgument(Exception):
 
 class UnexpectedResult(Exception):
     pass
+
+class MissingArgument(Exception):
+    pass

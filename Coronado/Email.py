@@ -3,17 +3,17 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import json
 import string
-import sys
 import logging
 
 from Worker import WorkHandler
+from Exceptions import MissingArgument
 
-
+logger = logging.getLogger(__name__)
 
 class SendEmail(WorkHandler):
      
     def __call__(self):
-        message = self.request.message
+        message = self.request.body
 
         # Get parameters from the message
         recipient = message.get('recipient')
@@ -25,14 +25,10 @@ class SendEmail(WorkHandler):
 
         # Ignore the message if required args aren't given
         if recipient is None or subject is None:
-            logging.log(logging.WARNING, 'Ignoring email message because it '
-                    + 'does not have a recipient and/or subject.') 
-            return
+            raise MissingArgument('Missing recipient and/or subject')
 
         if text is None and htmlFile is None and textFile is None:
-            logging.log(logging.WARNING, 'Ignoring email message because it '
-                    + 'does not have a body.') 
-            return
+            raise MissingArgument('Missing body')
 
         smtpArgs = self._context['smtp']
 
@@ -80,6 +76,7 @@ class SendEmail(WorkHandler):
             s.login(smtpArgs['email'], smtpArgs['password'])
 
             # Send the message
+            logger.info('Sending email to %s', message['recipient'])
             s.sendmail(smtpArgs['email'], 
                     message['recipient'], emailMsg.as_string())
         finally:

@@ -8,10 +8,15 @@ import multiprocessing
 from functools import partial
 import signal
 import os
+import json
+import logging
 
 sys.path.append(os.getcwd())
 
 from config import config
+import Coronado
+
+logger = logging.getLogger(__name__)
 
 # Get list of extension modules
 keysBeforeImport = set(sys.modules.keys())
@@ -84,11 +89,7 @@ def startApp(workerMode=False, *args, **kwargs):
         # Start listening for requests
         app.startListening()
 
-        if workerMode:
-            sys.stderr.write('Started worker\n')
-        else:
-            sys.stderr.write('Started web server\n')
-        sys.stderr.flush()
+        logger.info(workerMode and 'Started worker' or 'Started web server')
 
         # Start async event loop
         app.startEventLoop()
@@ -141,28 +142,34 @@ def startComprehensive(numWorkers, *args, **kwargs):
 @argh.arg('-t', '--test', help='start web server in test mode')
 @argh.arg('-f', '--fixture', help='fixture file for test mode')
 @argh.arg('-d', '--daemon', help='daemon mode')
+@argh.arg('-l', '--logLevel', 
+        help='one of "debug", "info", "warning", "error", and "critical"')
+@argh.arg('--logFormat', 
+        help='Python-like log format (see Python docs for details)')
 def start(comprehensive=True, server=False, workers=False, 
         numWorkers=multiprocessing.cpu_count(),
-        test=False, fixture=None, daemon=False, *args, **kwargs):
+        test=False, fixture=None, daemon=False, 
+        logLevel='warning', 
+        logFormat='%(levelname)s:%(name)s (at %(asctime)s): %(message)s',
+        *args, **kwargs):
     '''
     Start the application. By default, comprehensive mode is turned on.
     '''
     if daemon:
         yield 'Daemon mode is not available yet, starting in foreground...'
 
+    Coronado.configureLogging(level=logLevel, format=logFormat)
+
     if test:
         startInTestMode(fixture, *args, **kwargs)
     elif workers:
-        sys.stderr.write('Starting workers...\n')
-        sys.stderr.flush()
+        logger.info('Starting workers...')
         startWorkers(numWorkers, *args, **kwargs)
     elif server:
-        sys.stderr.write('Starting web server...\n')
-        sys.stderr.flush()
+        logger.info('Starting web server...')
         startApp(*args, **kwargs)
     elif comprehensive:
-        sys.stderr.write('Starting web server and workers...\n')
-        sys.stderr.flush()
+        logger.info('Starting web server and workers...')
         startComprehensive(numWorkers, *args, **kwargs)
     
 
