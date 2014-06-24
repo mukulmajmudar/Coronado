@@ -214,7 +214,8 @@ class Worker(WorkerInterface):
 
             # If response expected, return an error response
             if id is not None:
-                self.respond(id, {'error': str(e)}, 'application/json', 'utf-8')
+                self.respond(id, json.dumps({'error': str(e)}), 
+                        'application/json', 'utf-8')
         else:
             # If no request ID, don't do anything
             if id is None:

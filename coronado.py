@@ -106,21 +106,24 @@ def startApp(workerMode=False, *args, **kwargs):
 def startWorkers(numWorkers, *args, **kwargs):
     args = tuple([True] + list(args))
     workers = []
-    for i in xrange(numWorkers):
-        p = multiprocessing.Process(target=startApp, args=args, kwargs=kwargs)
-        p.start()
-        workers.append(p)
+    if numWorkers == 1:
+        startApp(*args, **kwargs)
+    else:
+        for i in xrange(numWorkers):
+            p = multiprocessing.Process(target=startApp, args=args, kwargs=kwargs)
+            p.start()
+            workers.append(p)
 
-    # Wait for workers to exit
-    try:
-        for p in workers:
-            p.join()
+        # Wait for workers to exit
+        try:
+            for p in workers:
+                p.join()
 
-    except KeyboardInterrupt:
-        # Terminate all workers
-        for p in workers:
-            p.terminate()
-            p.join()
+        except KeyboardInterrupt:
+            # Terminate all workers
+            for p in workers:
+                p.terminate()
+                p.join()
 
 
 def startComprehensive(numWorkers, *args, **kwargs):

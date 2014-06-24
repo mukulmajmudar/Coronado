@@ -67,3 +67,15 @@ def transform(future, callback, ioloop=None):
 
     ioloop.add_future(future, onFutureDone)
     return newFuture
+
+
+def makeSuccessFuture(result):
+    future = tornado.concurrent.Future()
+    future.set_result(result)
+    return future
+
+
+def makeExceptionFuture(exception):
+    future = tornado.concurrent.Future()
+    future.set_exception(exception)
+    return future

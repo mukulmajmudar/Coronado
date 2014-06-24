@@ -118,7 +118,7 @@ class RequestHandler(tornado.web.RequestHandler):
         tbString = tbStringIO.getvalue()
 
         # Send email to the configured recipient
-        self._worker.queue(self._context['emailWorkKey'], 
+        self._worker.request(self._context['emailWorkTag'], 
         {
             'subject': self._context['errorEmailSubject'],
             'recipient': self._context['errorEmailRecipient'],
