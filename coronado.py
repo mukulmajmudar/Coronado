@@ -139,8 +139,8 @@ def startComprehensive(numWorkers, *args, **kwargs):
 
 
 @argh.arg('-c', '--comprehensive', help='start webserver and workers')
-@argh.arg('-s', '--server', help='start web server')
-@argh.arg('-w', '--workers', help='start workers')
+@argh.arg('-s', '--server', help='start web server only')
+@argh.arg('-w', '--workers', help='start workers only')
 @argh.arg('-n', '--numWorkers', help='number of workers')
 @argh.arg('-t', '--test', help='start web server in test mode')
 @argh.arg('-f', '--fixture', help='fixture file for test mode')
