@@ -1,16 +1,19 @@
 import json
 
 from Coronado.Concurrent import transform
+from tornado.ioloop import IOLoop
 
 class CollectionProxy(object):
     uri = None
     httpClient = None
     modelProxyClass = None
+    ioloop = None
 
     def __init__(self, **kwargs):
         self.uri = kwargs.get('uri')
         self.httpClient = kwargs.get('httpClient')
         self.modelProxyClass = kwargs.get('modelProxyClass')
+        self.ioloop = kwargs.get('ioloop', IOLoop.current())
         self._cache = {}
 
 
@@ -52,7 +55,7 @@ class CollectionProxy(object):
             self.trigger('added', **args);
             '''
 
-        return transform(responseFuture, onAdded)
+        return transform(responseFuture, onAdded, ioloop=self.ioloop)
 
 
     def get(self, id, fetch=False):

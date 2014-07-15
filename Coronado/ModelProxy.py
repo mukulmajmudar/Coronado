@@ -1,8 +1,12 @@
 import json
 
+from Coronado.Concurrent import transform
+from tornado.ioloop import IOLoop
+
 class ModelProxy(dict):
     uri = None
     httpClient = None
+    ioloop = None
     singular = 'model'
     plural = 'models'
 
@@ -10,6 +14,7 @@ class ModelProxy(dict):
         # Save URI and HTTP client if given
         self.uri = kwargs.pop('uri', None)
         self.httpClient = kwargs.pop('httpClient', None)
+        self.ioloop = kwargs.pop('ioloop', IOLoop.current())
 
         # Call parent
         super(ModelProxy, self).__init__(*args, **kwargs)
@@ -31,4 +36,6 @@ class ModelProxy(dict):
             # TODO: Trigger event
             #self.trigger('fetched', modelProxy=self)
 
-            return self;
+            return self
+
+        return transform(fetchFuture, onFetch, ioloop=self.ioloop)
