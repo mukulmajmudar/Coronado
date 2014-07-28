@@ -11,13 +11,28 @@ import logging
 import tornado.iostream
 from tornado.concurrent import Future
 from tornado.ioloop import IOLoop
+from Coronado.Concurrent import transform
 
 logger = logging.getLogger(__name__)
 
 class PayloadTooLong(Exception):
     pass
 
-class APNsNotifier(object):
+class RequestError(Exception):
+    code = None
+
+    def __init__(self, *args, **kwargs):
+        super(RequestError, self).__init__(*args)
+        self.code = kwargs.get('code')
+
+
+class Notifier(object):
+
+    def send(self, notification):
+        raise NotImplementedError()
+
+
+class APNsNotifier(Notifier):
 
     def __init__(self, apnsArgs, sslArgs):
         self._apnsArgs = apnsArgs
@@ -117,10 +132,42 @@ class APNsNotifier(object):
         self._iostream.read_bytes(6, self._onError)
 
 
-
     _apnsArgs = None
     _sslArgs = None
     _sslSocket = None
     _iostream = None
     _connectFuture = None
     _connected = None
+
+
+class GCMNotifier(Notifier):
+    gcmArgs = None
+    httpClient = None
+    ioloop = None
+
+    def __init__(self, gcmArgs, httpClient, ioloop=None):
+        self.gcmArgs = gcmArgs
+        self.httpClient = httpClient
+        self.ioloop = ioloop is not None and ioloop or IOLoop.current()
+
+
+    def send(self, notification):
+        responseFuture = self.httpClient.fetch(
+                request=self.gcmArgs['uri'],
+                method='POST',
+                headers=
+                {
+                    'Content-Type': 'application/json; charset=UTF-8',
+                    'Authorization': 'key=' + self.gcmArgs['apiKey']
+                },
+                body=json.dumps(notification))
+
+        def onResponse(responseFuture):
+            try:
+                response = responseFuture.result()
+            except tornado.httpclient.HTTPError as e:
+                raise RequestError(code=e.code)
+            else:
+                return json.loads(response.body)
+
+        return transform(responseFuture, onResponse, ioloop=self.ioloop)

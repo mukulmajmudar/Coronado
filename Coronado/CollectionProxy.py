@@ -60,13 +60,13 @@ class CollectionProxy(object):
 
     def get(self, id, fetch=False):
         id = str(id)
-        entry = self._cache[self.uri + '/' + id];
+        entry = self._cache.get(self.uri + '/' + id);
         if entry:
             modelProxy = self._makeModelProxy(json.loads(entry))
             modelProxy.uri = self.uri + '/' + id;
             return modelProxy
 
-        modelProxy = self._makeModelProxy({id: id});
+        modelProxy = self._makeModelProxy(dict(id=id))
 
         uri = self.uri;
         cache = self._cache;
@@ -89,7 +89,7 @@ class CollectionProxy(object):
         attrs.update(uri=self.uri + '/' + attrs['id'],
                 httpClient=self.httpClient)
 
-        return self.modelProxyClass(attrs)
+        return self.modelProxyClass(**attrs)
 
 
     _cache = None
