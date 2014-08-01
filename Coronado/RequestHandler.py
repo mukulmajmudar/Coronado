@@ -2,6 +2,7 @@ import os
 from cStringIO import StringIO
 import traceback
 import json
+from functools import wraps
 
 import tornado.web
 from .HttpUtil import parseContentType
@@ -163,3 +164,24 @@ class RequestHandler(tornado.web.RequestHandler):
     _ioloop = None
     _database = None
     _httpClient = None
+
+
+def withJsonBody(attrName='jsonBody', charset='UTF-8'):
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            contentType, reqCharset = parseContentType(
+                    self.request.headers.get('Content-Type'))
+            if contentType != 'application/json' or reqCharset != charset:
+                raise tornado.web.HTTPError(415)
+            try:
+                setattr(self, attrName, json.loads(self.request.body))
+            except ValueError as e:
+                raise tornado.web.HTTPError(415)
+            else:
+                func(self, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
