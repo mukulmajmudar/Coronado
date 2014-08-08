@@ -41,6 +41,7 @@ class APNsNotifier(Notifier):
 
 
     def connect(self):
+        self._connecting = True
         self._connectFuture = Future()
 
         # Create a non-blocking SSL socket
@@ -59,6 +60,7 @@ class APNsNotifier(Notifier):
         def onConnected():
             logger.info('APNs connected')
             self._connectFuture.set_result(None)
+            self._connecting = False
             self._connected = True
 
         # Connect
@@ -113,8 +115,9 @@ class APNsNotifier(Notifier):
         if self._connected:
             _send()
         else:
-            connectFuture = self.connect()
-            IOLoop.current().add_future(connectFuture, onConnected)
+            if not self._connecting:
+                self.connect()
+            IOLoop.current().add_future(self._connectFuture, onConnected)
 
 
     def shutdown(self):
@@ -138,6 +141,7 @@ class APNsNotifier(Notifier):
     _iostream = None
     _connectFuture = None
     _connected = None
+    _connecting = False
 
 
 class GCMNotifier(Notifier):
