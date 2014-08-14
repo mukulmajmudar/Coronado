@@ -127,24 +127,6 @@ class RequestHandler(tornado.web.RequestHandler):
         })
 
 
-    def write(self, chunk, finish=False):
-        '''
-        If chunk is a list, converts it to a JSON string and sets response 
-        content-type as JSON before passing it to this method's parent version.
-
-        If finish is True, calls self.finish() after writing
-        '''
-
-        if isinstance(chunk, list):
-            self.set_header('Content-Type', 'application/json; charset=UTF-8')
-            chunk = json.dumps(chunk)
-
-        returnValue = super(RequestHandler, self).write(chunk)
-        if finish:
-            self.finish()
-        return returnValue
-
-
     def _getJsonBody(self, charset='UTF-8'):
         contentType, reqCharset = parseContentType(
                 self.request.headers.get('Content-Type'))
