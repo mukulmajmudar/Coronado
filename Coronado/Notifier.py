@@ -9,6 +9,7 @@ from datetime import datetime
 import logging
 
 import tornado.iostream
+from tornado.iostream import StreamClosedError
 from tornado.concurrent import Future
 from tornado.ioloop import IOLoop
 from Coronado.Concurrent import transform
@@ -106,7 +107,16 @@ class APNsNotifier(Notifier):
                     frameData)
 
             logger.info('Sending push notification...')
-            self._iostream.write(packet)
+
+            try:
+                self._iostream.write(packet)
+            except StreamClosedError:
+                logger.warning('Stream closed, reconnecting...')
+                self.connect()
+                def onReconnected(future):
+                    future.result()
+                    _send()
+                IOLoop.current().add_future(self._connectFuture, onReconnected)
 
         def onConnected(future):
             future.result()
