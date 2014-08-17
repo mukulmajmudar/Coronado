@@ -5,7 +5,7 @@ import binascii
 from random import random
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 
 import tornado.iostream
@@ -112,11 +112,15 @@ class APNsNotifier(Notifier):
                 self._iostream.write(packet)
             except StreamClosedError:
                 logger.warning('Stream closed, reconnecting...')
-                self.connect()
-                def onReconnected(future):
-                    future.result()
-                    _send()
-                IOLoop.current().add_future(self._connectFuture, onReconnected)
+
+                def retry():
+                    self.connect()
+                    def onReconnected(future):
+                        future.result()
+                        _send()
+                    IOLoop.current().add_future(self._connectFuture, onReconnected)
+
+                IOLoop.current().add_timeout(timedelta(seconds=5), retry)
 
         def onConnected(future):
             future.result()
