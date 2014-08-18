@@ -49,6 +49,9 @@ class APNsNotifier(Notifier):
 
 
     def connect(self):
+        if self._connecting:
+            return self._connectFuture
+
         self._connecting = True
         self._connectFuture = Future()
 
@@ -132,7 +135,7 @@ class APNsNotifier(Notifier):
                         _send()
                     self.ioloop.add_future(self._connectFuture, onReconnected)
 
-                self.ioloop.add_timeout(timedelta(seconds=2), retry)
+                self.ioloop.add_timeout(timedelta(seconds=5), retry)
             else:
                 # Save sent notification in queue. We may have to resend it if
                 # a preceding notification fails.
