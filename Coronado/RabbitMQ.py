@@ -4,6 +4,7 @@ import sys
 import logging
 import json
 import logging
+import time
 
 import pika
 from pika.adapters import TornadoConnection
@@ -64,6 +65,14 @@ class SimpleClient(object):
         return self._connectFuture
 
 
+    def disconnect(self):
+        if not self._connected:
+            return
+        self._disconnectFuture = tornado.concurrent.Future()
+        self._connection.close()
+        return self._disconnectFuture
+
+
     def publish(self, queueName, type, body, contentType, 
             contentEncoding, correlationId, persistent):
         # If already connected to RabbitMQ server, publish immediately
@@ -117,11 +126,28 @@ class SimpleClient(object):
             connectFuture.result()
             assert(self._connected)
 
+            # Add on-cancel callback
+            def onCancel(frame):
+                self._channel.close()
+            self._channel.add_on_cancel_callback(onCancel)
+
             # Start consuming
-            self._channel.basic_consume(self._onMessage, queueName)
+            self._consumerTag = self._channel.basic_consume(
+                    self._onMessage, queueName)
             logger.info('Started consuming from queue %s', queueName)
 
         self._ioloop.add_future(self.connect(), onConnected)
+
+
+    def stopConsuming(self):
+        logger.info('Stopping RabbitMQ consumer')
+        stopFuture = tornado.concurrent.Future()
+        def onCanceled(unused):
+            logger.info('Canceled RabbitMQ consumer')
+            stopFuture.set_result(None)
+        self._channel.basic_cancel(onCanceled, self._consumerTag)
+        return stopFuture
+
 
 
     def _publish(self, queueName, type, body, contentType, 
@@ -148,10 +174,15 @@ class SimpleClient(object):
 
     def _onConnectError(self):
         self._connectFuture.set_exception(ConnectionError())
+        self._connectFuture = None
 
 
     def _onConnectionClosed(self, connection, replyCode, replyText):
         logger.info('RabbitMQ server connection closed')
+        self._connected = False
+        if self._disconnectFuture is not None:
+            self._disconnectFuture.set_result(None)
+            self._disconnectFuture = None
 
 
     def _onChannel(self, channel):
@@ -160,6 +191,7 @@ class SimpleClient(object):
         self._connected = True
         logger.info('Connected to RabbitMQ server')
         self._connectFuture.set_result(None)
+        self._connectFuture = None
 
 
     def _onChannelClosed(self, channel, replyCode, replyText):
@@ -185,17 +217,20 @@ class SimpleClient(object):
     _connectFuture = None
     _connection = None
     _channel = None
+    _consumerTag = None
+    _disconnectFuture = None
 
 
 class WorkerProxy(BaseWorkerProxy):
 
     def __init__(self, host, port, requestQueueName, responseQueueName, 
-            ioloop=None):
+            ioloop=None, shutdownDelay=10.0):
         # Call parent
         super(WorkerProxy, self).__init__(ioloop)
 
         self._requestQueueName = requestQueueName
         self._responseQueueName = responseQueueName
+        self._shutdownDelay = shutdownDelay
 
         # Create a client
         self._client = SimpleClient(host, port, self._onMessage, ioloop)
@@ -208,6 +243,33 @@ class WorkerProxy(BaseWorkerProxy):
     def start(self):
         # Start consuming from the response queue
         self._client.startConsuming(self._responseQueueName)
+
+
+    def stop(self):
+        future = tornado.concurrent.Future()
+        def onStopped(stopFuture):
+            try:
+                stopFuture.result()
+            finally:
+                def disconnect():
+                    disconnFuture = self._client.disconnect()
+                    def onDisconnected(disconnFuture):
+                        try:
+                            disconnFuture.result()
+                        finally:
+                            future.set_result(None)
+
+                    self._ioloop.add_future(disconnFuture, onDisconnected)
+
+                # Disconnect after a delay
+                logger.info('WorkerProxy will be stopped in %d seconds',
+                        self._shutdownDelay)
+                self._ioloop.add_timeout(time.time() + self._shutdownDelay,
+                        disconnect)
+
+        self._ioloop.add_future(self._client.stopConsuming(), onStopped)
+
+        return future
 
 
     def _request(self, id, tag, body, contentType, contentEncoding):
@@ -234,17 +296,19 @@ class WorkerProxy(BaseWorkerProxy):
     _requestQueueName = None
     _responseQueueName = None
     _client = None
+    _shutdownDelay = None
 
 
 class Worker(BaseWorker):
 
     def __init__(self, handlers, host, port, requestQueueName,
-            responseQueueName, ioloop=None):
+            responseQueueName, ioloop=None, shutdownDelay=10.0):
         # Call parent
         super(Worker, self).__init__(handlers, ioloop)
 
         self._requestQueueName = requestQueueName
         self._responseQueueName = responseQueueName
+        self._shutdownDelay = shutdownDelay
 
         # Create a client
         self._client = SimpleClient(host, port, self._onMessage, ioloop)
@@ -257,6 +321,33 @@ class Worker(BaseWorker):
     def start(self):
         # Start consuming from the request queue
         self._client.startConsuming(self._requestQueueName)
+
+
+    def stop(self):
+        future = tornado.concurrent.Future()
+        def onStopped(stopFuture):
+            try:
+                stopFuture.result()
+            finally:
+                def disconnect():
+                    disconnFuture = self._client.disconnect()
+                    def onDisconnected(disconnFuture):
+                        try:
+                            disconnFuture.result()
+                        finally:
+                            future.set_result(None)
+
+                    self._ioloop.add_future(disconnFuture, onDisconnected)
+
+                # Disconnect after a delay
+                logger.info('Worker will be stopped in %d seconds',
+                        self._shutdownDelay)
+                self._ioloop.add_timeout(time.time() + self._shutdownDelay,
+                        disconnect)
+
+        self._ioloop.add_future(self._client.stopConsuming(), onStopped)
+
+        return future
 
 
     def respond(self, requestId, body, contentType, contentEncoding):
@@ -286,3 +377,4 @@ class Worker(BaseWorker):
     _requestQueueName = None
     _responseQueueName = None
     _client = None
+    _shutdownDelay = None

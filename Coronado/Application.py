@@ -4,6 +4,8 @@ from contextlib import closing
 import argparse
 import json
 import traceback
+import logging
+import time
 
 import tornado.ioloop
 import tornado.httpclient
@@ -14,6 +16,8 @@ import Coronado
 import Coronado.Testing
 from . import Email
 import RabbitMQ
+
+logger = logging.getLogger(__name__)
 
 workerClasses = \
 {
@@ -37,10 +41,12 @@ class Application(object):
     config = None
     context = None
     tornadoApp = None
+    httpServer = None
 
     def __init__(self, config, workerMode=False):
         self.config = config
         self._workerMode = workerMode
+        self._destroyed = False
 
 
     def setup(self, context=None):
@@ -114,7 +120,12 @@ class Application(object):
         if self._workerMode:
             return
 
-        self.tornadoApp.listen(self.context['port'])
+        # Create a new HTTPServer
+        from tornado.httpserver import HTTPServer
+        self.httpServer = HTTPServer(self.tornadoApp)
+
+        # Start listening
+        self.httpServer.listen(self.context['port'])
 
 
     def startEventLoop(self):
@@ -126,7 +137,46 @@ class Application(object):
 
 
     def destroy(self):
-        pass
+        # If already destroyed, do nothing
+        if self._destroyed:
+            return
+
+        # Stop accepting new HTTP connections, then shutdown server after a
+        # delay. This pattern is suggested by Ben Darnell (a maintainer of
+        # Tornado):
+        # https://groups.google.com/d/msg/python-tornado/NTJfzETaxeI/MaJ-hvTw4_4J
+
+        if not self._workerMode:
+            # Stop accepting new connections
+            self.httpServer.stop()
+
+            # Stop worker proxy
+            logger.info('Stopping worker proxy')
+        else:
+            logger.info('Stopping worker')
+
+        workerStopFuture = self.context['worker'].stop()
+
+        def onWorkerStopped(workerStopFuture):
+            try:
+                workerStopFuture.result()
+            finally:
+                # Stop event loop after a delay
+                delaySeconds = self.context.get('shutdownDelay', 5.0)
+
+                label = self._workerMode and 'Worker' or 'Application'
+
+                def stop():
+                    self.stopEventLoop()
+                    self._destroyed = True
+                    logger.info('%s has been shut down.', label)
+
+                logger.info('%s will be shut down in %d seconds', label,
+                        delaySeconds)
+                self.context['ioloop'].add_timeout(
+                        time.time() + delaySeconds, stop)
+
+        self.context['ioloop'].add_future(workerStopFuture, onWorkerStopped)
 
 
     def _getDbConnection(self):
@@ -169,6 +219,7 @@ class Application(object):
 
 
     _workerMode = None
+    _destroyed = None
 
 
 class AppStarter(object):

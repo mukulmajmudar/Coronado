@@ -33,6 +33,10 @@ class WorkerInterface(object):
         raise NotImplementedError()
 
 
+    def stop(self):
+        raise NotImplementedError()
+
+
 class WorkerProxy(WorkerInterface):
 
     def __init__(self, ioloop=None):

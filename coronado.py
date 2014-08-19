@@ -73,6 +73,7 @@ def startInTestMode(fixture, *args, **kwargs):
             scaffold.destroy()
 
 def onSigTerm(app, signum, frame):
+    logger.info('Caught signal %d, shutting down app.', signum)
     app.destroy()
 
 
