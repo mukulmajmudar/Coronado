@@ -77,8 +77,22 @@ class Application(object):
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
 
-        # Define url handler
-        self.tornadoApp = tornado.web.Application(self._getUrlHandlers())
+        # Define url handlers for each API version
+        urls = {}
+        for i, apiVersion in enumerate(self.context.get('apiVersions', ['1'])):
+            # If no API version is specified, we will use the oldest one
+            if i == 0:
+                urls.update(
+                        getattr(self, 'v' + str(apiVersion) + 'UrlHandlers')())
+
+            versionUrls = getattr(self, 'v' + str(apiVersion) + 'UrlHandlers')()
+            for url, handlerClass in versionUrls.iteritems():
+                urls['/v' + str(apiVersion) + url] = handlerClass
+        logger.debug('URL mappings: %s', str(urls))
+        urlHandlers = [mapping + (self.context,) 
+                for mapping in zip(urls.keys(), urls.values())]
+
+        self.tornadoApp = tornado.web.Application(urlHandlers)
 
         self.context['tornadoApp'] = self.tornadoApp
 
