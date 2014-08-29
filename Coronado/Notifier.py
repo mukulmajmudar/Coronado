@@ -13,7 +13,11 @@ import tornado.iostream
 from tornado.iostream import StreamClosedError
 from tornado.concurrent import Future
 from tornado.ioloop import IOLoop
-from Coronado.Concurrent import transform
+import dateutil.tz
+import dateutil.parser
+
+from .Concurrent import transform
+from .NetUtil import exponentialBackoff
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,24 @@ class RequestError(Exception):
         super(RequestError, self).__init__(*args)
         self.code = kwargs.get('code')
 
+
+class BadRequest(Exception):
+    pass
+
+class AuthenticationError(Exception):
+    pass
+
+class ResponseError(Exception):
+    pass
+
+class InvalidDataKey(Exception):
+    pass
+
+class InvalidTtl(Exception):
+    pass
+
+class MissingRegistration(Exception):
+    pass
 
 class Notifier(object):
 
@@ -254,7 +276,12 @@ class GCMNotifier(Notifier):
         self.ioloop = ioloop is not None and ioloop or IOLoop.current()
 
 
-    def send(self, notification):
+    @exponentialBackoff(maxDelay=60)
+    def send(self, notification, removeRegId, updateRegId, retry):
+        '''
+        Send a notification to the GCM server.
+        '''
+        # Send to GCM server
         responseFuture = self.httpClient.fetch(
                 request=self.gcmArgs['uri'],
                 method='POST',
@@ -269,8 +296,75 @@ class GCMNotifier(Notifier):
             try:
                 response = responseFuture.result()
             except tornado.httpclient.HTTPError as e:
-                raise RequestError(code=e.code)
+                logger.info('HTTP status code = %d', e.code)
+                if e.code == 400:
+                    raise BadRequest()
+                elif e.code == 401:
+                    raise AuthenticationError()
+                elif e.code >= 500:
+                    return retry(self, notification, removeRegId, updateRegId)
+                else:
+                    raise RequestError(code=e.code)
             else:
-                return json.loads(response.body)
+                jsonResponse = json.loads(response.body)
+
+                # If both failure and canonical_ids are 0, then the 
+                # request was successful
+                if jsonResponse.get('failure') == 0 and \
+                        jsonResponse.get('canonical_ids') == 0:
+                    logger.info('GCM notification sent successfully')
+                    return
+
+                logger.info('One or GCM notifications may not have been sent.')
+
+                results = jsonResponse.get('results')
+                if not results or not isinstance(results, list):
+                    raise ResponseError()
+
+                retryAfter = response.headers.get('Retry-After', None)
+                if retryAfter is not None:
+                    # Parse header value: it could be seconds as an integer or 
+                    # an HTTP date
+                    try:
+                        retryAfter = int(retryAfter)
+                    except ValueError:
+                        # Value is in HTTP date format
+                        httpDate = dateutil.parser.parse(retryAfter)
+                        now = datetime.now(dateutil.tz.tzutc())
+                        retryAfter = (httpDate - now).seconds
+
+                        # Safeguard: if bad header value, ignore it
+                        if retryAfter <= 0:
+                            retryAfter = None
+
+                for i, result in enumerate(results):
+                    regId = result.get('registration_id')
+                    if 'message_id' in result and regId is not None:
+                        origRegId = notification['registration_ids'][i]
+                        logger.info('Updating stale registration ID...')
+                        logger.debug('Replacing %s with %s', origRegId, regId)
+                        updateRegId(origRegId, regId)
+                    else:
+                        error = result.get('error')
+                        if error is None:
+                            continue
+
+                        logger.error('GCM Error: %s', error)
+                        if error == 'MissingRegistration':
+                            raise MissingRegistration()
+                        elif error in ('Unavailable', 'InternalServerError'):
+                            return retry(self, notification, removeRegId, 
+                                    updateRegId, minDelay=retryAfter)
+                        elif error in ('NotRegistered', 'InvalidRegistration',
+                                'MismatchSenderId', 'InvalidPackageName'):
+                            origRegId = notification['registration_ids'][i]
+                            logger.info('Removing registration ID %s...', origRegId)
+                            removeRegId(origRegId)
+                        elif error == 'MessageTooBig':
+                            raise PayloadTooLong()
+                        elif error == 'InvalidDataKey':
+                            raise InvalidDataKey()
+                        elif error == 'InvalidTtl':
+                            raise InvalidTtl()
 
         return transform(responseFuture, onResponse, ioloop=self.ioloop)

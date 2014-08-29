@@ -14,7 +14,8 @@ setup(
         'argparse',
         'argh',
         'argcomplete',
-        'pika'
+        'pika',
+        'python-dateutil'
     ],
     author='Mukul Majmudar',
     author_email='mukul@curecompanion.com',
