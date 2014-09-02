@@ -56,18 +56,17 @@ class Notifier(object):
         raise NotImplementedError()
 
 
-class APNsNotifier(Notifier):
-    sentQueue = None
+class APNsConnector(object):
+    apnsArgs = None
+    sslArgs = None
+    connected = False
     ioloop = None
-    timeoutHandles = None
+
 
     def __init__(self, apnsArgs, sslArgs, ioloop=None):
-        self._apnsArgs = apnsArgs
-        self._sslArgs = sslArgs
-        self._connected = False
-        self.sentQueue = Queue()
+        self.apnsArgs = apnsArgs
+        self.sslArgs = sslArgs
         self.ioloop = ioloop is not None and ioloop or IOLoop.current()
-        self.timeoutHandles = {}
 
 
     def connect(self):
@@ -84,26 +83,62 @@ class APNsNotifier(Notifier):
         # Make tornado iostream
         sslOptions = \
         {
-            'certfile': self._apnsArgs['certFilePath'],
-            'ca_certs': self._sslArgs['caCertsFilePath'],
+            'certfile': self.apnsArgs['certFilePath'],
+            'ca_certs': self.sslArgs['caCertsFilePath'],
             'cert_reqs': ssl.CERT_REQUIRED
         }
-        self._iostream = tornado.iostream.SSLIOStream(s, ssl_options=sslOptions)
+        self._iostream = tornado.iostream.SSLIOStream(
+                s, ssl_options=sslOptions, io_loop=self.ioloop)
 
         def onConnected():
-            logger.info('APNs connected')
+            logger.info('Connected to %s:%d', self.apnsArgs['host'],
+                    self.apnsArgs['port'])
             self._connectFuture.set_result(None)
             self._connecting = False
-            self._connected = True
+            self.connected = True
+
+            # Change connected flag on close
+            def onClosed():
+                logger.info('APNs connection closed.')
+                self.connected = False
+            self._iostream.set_close_callback(onClosed)
+
+            # Read until connection closed
+            self._iostream.read_until_close(self.onDataReceived)
 
         # Connect
-        self._iostream.connect((self._apnsArgs['host'], self._apnsArgs['port']),
+        logger.info('Connecting to %s:%d', self.apnsArgs['host'],
+                self.apnsArgs['port'])
+        self._iostream.connect((self.apnsArgs['host'], self.apnsArgs['port']),
                 onConnected)
 
-        # Perform read for error packets
-        self._iostream.read_bytes(6, self._onError)
-
         return self._connectFuture
+
+
+    def shutdown(self):
+        if self._iostream is not None:
+            self._iostream.close()
+
+
+    def onDataReceived(self, data):
+        raise NotImplementedError()
+
+
+    _iostream = None
+    _connecting = False
+    _connectFuture = None
+
+
+class APNsNotifier(APNsConnector):
+    sentQueue = None
+    timeoutHandles = None
+    removeToken = None
+
+    def __init__(self, *args, **kwargs):
+        self.removeToken = kwargs.pop('removeToken')
+        super(APNsNotifier, self).__init__(*args, **kwargs)
+        self.sentQueue = Queue()
+        self.timeoutHandles = {}
 
 
     def send(self, notification):
@@ -169,13 +204,16 @@ class APNsNotifier(Notifier):
                     logger.info('Popping item from sent queue')
 
                     # Remove an item from the queue
-                    notifcn = self.sentQueue.get()
-
-                    # Delete its timeout, if any
                     try:
-                        del self.timeoutHandles[notifcn['_id']]
-                    except KeyError:
+                        notifcn = self.sentQueue.get(False)
+                    except Empty:
                         pass
+                    else:
+                        # Delete its timeout, if any
+                        try:
+                            del self.timeoutHandles[notifcn['_id']]
+                        except KeyError:
+                            pass
 
                 handle = self.ioloop.add_timeout(timedelta(seconds=2), popItem)
                 self.timeoutHandles[notification['_id']] = handle
@@ -185,31 +223,25 @@ class APNsNotifier(Notifier):
             future.result()
             _send()
 
-        if self._connected:
+        if self.connected:
             _send()
         else:
+            logger.info('Not connected to APNs.')
             if not self._connecting:
                 self.connect()
             self.ioloop.add_future(self._connectFuture, onConnected)
 
 
-    def shutdown(self):
-        if self._iostream is not None:
-            self._iostream.close()
-
-        self._connected = False
-
-
-    def _onError(self, response):
-        command, status, notifId = struct.unpack('!BBi', response)
-        logger.error('APNs ERROR: %s %s %s', str(command), str(status), str(notifId))
-
-        # Connection is closed by APNs on error
-        self._connected = False
+    def onDataReceived(self, data):
+        command, status, notifId = struct.unpack('!BBi', data)
+        logger.error('APNs ERROR: %s %s %s', str(command), 
+                str(status), str(notifId))
 
         # Pop sent-queue until we get the erroneous notification.
         # Items before the erroneous one were successful
         poppedNotifcns = []
+        notifcn = None
+        foundNotification = False
         while True:
             try:
                 notifcn = self.sentQueue.get(False)
@@ -225,9 +257,15 @@ class APNsNotifier(Notifier):
                     self.ioloop.remove_timeout(timeoutHandle)
 
                 if notifcn['_id'] == notifId:
+                    foundNotification = True
                     break
 
                 poppedNotifcns.append(notifcn)
+
+        # If error is invalid-token, remove the token
+        if status == 8 and foundNotification:
+            logger.info('Removing invalid iOS token %s...', notifcn['token'])
+            self.removeToken(notifcn['token'])
 
         # Resend all remaining notifications in the queue
         resendList = []
@@ -244,43 +282,83 @@ class APNsNotifier(Notifier):
             for n in resendList:
                 self.send(n)
         else:
-            logger.info('Resending remaining known notifications after ' + \
-                    'erroneous one.')
+            if not foundNotification and len(poppedNotifcns) > 0:
+                logger.info('Resending remaining known notifications after ' + \
+                        'erroneous one.')
 
-            # Resend list was empty, which means that the erroneous notification
-            # was assumed by us to be successful, and so all the popped 
-            # notifications need to be resent. Some notifications may be
-            # permanently lost. This is unavoidable since APNs doesn't
-            # acknowledge successful notifications.
-            for n in poppedNotifcns:
-                self.send(n)
+                # Resend list was empty, which means that the erroneous 
+                # notification was assumed by us to be successful, and so all 
+                # the popped notifications need to be resent. Some 
+                # notifications may be permanently lost. This is unavoidable 
+                # since APNs doesn't acknowledge successful notifications.
+                for n in poppedNotifcns:
+                    self.send(n)
 
 
-    _apnsArgs = None
-    _sslArgs = None
-    _sslSocket = None
-    _iostream = None
-    _connectFuture = None
-    _connected = None
-    _connecting = False
+class APNsFeedbackHandler(APNsConnector):
+    removeToken = None
+
+    def __init__(self, *args, **kwargs):
+        self.removeToken = kwargs.pop('removeToken')
+        super(APNsFeedbackHandler, self).__init__(*args, **kwargs)
+
+
+    def start(self):
+        return self.connect()
+
+
+    def onDataReceived(self, data):
+        if len(data) > 0:
+            logger.info('Feedback handler received data.')
+        else:
+            logger.info('Feedback handler connection closed, no data received.')
+        while len(data) > 0:
+            timestamp, tokenLength = struct.unpack('!iH', data[:6])
+            data = data[6:]
+            token = data[:tokenLength]
+
+            # Call remove function
+            logger.info('Removing token %s', token)
+            self.removeToken(token, timestamp)
+
+            data = data[tokenLength:]
+
+        # Schedule next feedback service query
+        logger.info('Will connect to APNs feedback service again in %s',
+                self.apnsArgs['queryInterval'])
+        self.ioloop.add_timeout(self.apnsArgs['queryInterval'], self.connect)
+         
 
 
 class GCMNotifier(Notifier):
     gcmArgs = None
     httpClient = None
+    removeRegId = None
+    updateRegId = None
     ioloop = None
 
-    def __init__(self, gcmArgs, httpClient, ioloop=None):
+    def __init__(self, gcmArgs, httpClient, removeRegId, 
+            updateRegId, ioloop=None):
         self.gcmArgs = gcmArgs
         self.httpClient = httpClient
+        self.removeRegId = removeRegId
+        self.updateRegId = updateRegId
         self.ioloop = ioloop is not None and ioloop or IOLoop.current()
 
 
     @exponentialBackoff(maxDelay=60)
-    def send(self, notification, removeRegId, updateRegId, retry):
+    def send(self, notification, retry):
         '''
         Send a notification to the GCM server.
+
+        Remove and update functions are passed in as arguments due to
+        a Coronado API versioning limitation. They will be moved to the
+        constructor when the limitation is removed.
         '''
+
+        logger.debug('GCM notification = %s', 
+                json.dumps(notification, indent=4))
+
         # Send to GCM server
         responseFuture = self.httpClient.fetch(
                 request=self.gcmArgs['uri'],
@@ -302,7 +380,7 @@ class GCMNotifier(Notifier):
                 elif e.code == 401:
                     raise AuthenticationError()
                 elif e.code >= 500:
-                    return retry(self, notification, removeRegId, updateRegId)
+                    return retry(self, notification)
                 else:
                     raise RequestError(code=e.code)
             else:
@@ -343,7 +421,7 @@ class GCMNotifier(Notifier):
                         origRegId = notification['registration_ids'][i]
                         logger.info('Updating stale registration ID...')
                         logger.debug('Replacing %s with %s', origRegId, regId)
-                        updateRegId(origRegId, regId)
+                        self.updateRegId(origRegId, regId)
                     else:
                         error = result.get('error')
                         if error is None:
@@ -353,13 +431,13 @@ class GCMNotifier(Notifier):
                         if error == 'MissingRegistration':
                             raise MissingRegistration()
                         elif error in ('Unavailable', 'InternalServerError'):
-                            return retry(self, notification, removeRegId, 
-                                    updateRegId, minDelay=retryAfter)
+                            return retry(self, notification, 
+                                    minDelay=retryAfter)
                         elif error in ('NotRegistered', 'InvalidRegistration',
                                 'MismatchSenderId', 'InvalidPackageName'):
                             origRegId = notification['registration_ids'][i]
                             logger.info('Removing registration ID %s...', origRegId)
-                            removeRegId(origRegId)
+                            self.removeRegId(origRegId)
                         elif error == 'MessageTooBig':
                             raise PayloadTooLong()
                         elif error == 'InvalidDataKey':

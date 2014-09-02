@@ -7,6 +7,7 @@ import traceback
 import logging
 import time
 
+import importlib
 import tornado.ioloop
 import tornado.httpclient
 import MySQLdb
@@ -42,16 +43,21 @@ class Application(object):
     context = None
     tornadoApp = None
     httpServer = None
+    urlHandlers = None
+    started = False
 
     def __init__(self, config, workerMode=False):
         self.config = config
         self._workerMode = workerMode
         self._destroyed = False
+        self.urlHandlers = {}
 
 
     def setup(self, context=None):
         if context is None:
             context = {}
+
+        context['workerMode'] = self._workerMode
 
         # Initialize context to be a copy of the configuration
         self.context = self.config.copy()
@@ -77,24 +83,6 @@ class Application(object):
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
 
-        # Define url handlers for each API version
-        urls = {}
-        for i, apiVersion in enumerate(self.context.get('apiVersions', ['1'])):
-            # If no API version is specified, we will use the oldest one
-            if i == 0:
-                urls.update(
-                        getattr(self, 'v' + str(apiVersion) + 'UrlHandlers')())
-
-            versionUrls = getattr(self, 'v' + str(apiVersion) + 'UrlHandlers')()
-            for url, handlerClass in versionUrls.iteritems():
-                urls['/v' + str(apiVersion) + url] = handlerClass
-        logger.debug('URL mappings: %s', str(urls))
-        urlHandlers = [mapping + (self.context,) 
-                for mapping in zip(urls.keys(), urls.values())]
-
-        self.tornadoApp = tornado.web.Application(urlHandlers)
-
-        self.context['tornadoApp'] = self.tornadoApp
 
         # Setup a worker if configured
         worker = self.context.get('worker')
@@ -124,10 +112,31 @@ class Application(object):
             worker.setup()
             worker.start()
 
-            self._addToContextFlatten(
+            self.addToContextFlatten(
             {
                 'non-public': ['worker']
             })
+
+        # Call API-specific setup functions
+        self._callApiSpecific('setup', self, self.context)
+
+        # Define url handlers
+        urls = {}
+        for i, apiVersion in enumerate(self.urlHandlers):
+            # If no API version is specified, we will use the oldest one
+            if i == 0:
+                urls.update(self.urlHandlers[apiVersion])
+
+            versionUrls = self.urlHandlers[apiVersion]
+            for url, handlerClass in versionUrls.iteritems():
+                urls['/v' + str(apiVersion) + url] = handlerClass
+        logger.debug('URL mappings: %s', str(urls))
+        urlHandlers = [mapping + (self.context,) 
+                for mapping in zip(urls.keys(), urls.values())]
+
+        self.tornadoApp = tornado.web.Application(urlHandlers)
+
+        self.context['tornadoApp'] = self.tornadoApp
 
 
     def startListening(self):
@@ -143,6 +152,8 @@ class Application(object):
 
 
     def startEventLoop(self):
+        self._callApiSpecific('start', self, self.context)
+        self.started = True
         self.context['ioloop'].start()
 
 
@@ -150,10 +161,16 @@ class Application(object):
         self.context['ioloop'].stop()
 
 
+    def addUrlHandlers(self, version, urlHandlers):
+        self.urlHandlers[version] = urlHandlers
+
+
     def destroy(self):
         # If already destroyed, do nothing
-        if self._destroyed:
+        if not self.started or self._destroyed:
             return
+
+        self._callApiSpecific('destroy', self, self.context)
 
         # Stop accepting new HTTP connections, then shutdown server after a
         # delay. This pattern is suggested by Ben Darnell (a maintainer of
@@ -220,7 +237,16 @@ class Application(object):
         return []
 
 
-    def _addToContextFlatten(self, attrKeys):
+    def _callApiSpecific(self, functionName, *args, **kwargs):
+        for apiVersion in self.context.get('apiVersions', ['1']):
+            versionMod = importlib.import_module(
+                    self.context['appPackage'].__name__
+                    + '.v' + apiVersion)
+            if hasattr(versionMod, functionName):
+                getattr(versionMod, functionName)(*args, **kwargs)
+
+
+    def addToContextFlatten(self, attrKeys):
         flatten = self.context.get('flatten', {})
         for attrType, keys in attrKeys.iteritems():
             if attrType in flatten:
