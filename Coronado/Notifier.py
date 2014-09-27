@@ -233,6 +233,10 @@ class APNsNotifier(APNsConnector):
 
 
     def onDataReceived(self, data):
+        # Empty data means connection closed without error
+        if len(data) == 0:
+            return
+
         command, status, notifId = struct.unpack('!BBi', data)
         logger.error('APNs ERROR: %s %s %s', str(command), 
                 str(status), str(notifId))
