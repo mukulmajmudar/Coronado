@@ -44,6 +44,7 @@ class Application(object):
     tornadoApp = None
     httpServer = None
     urlHandlers = None
+    workUrlHandlers = None
     started = False
 
     def __init__(self, config, workerMode=False):
@@ -51,6 +52,7 @@ class Application(object):
         self._workerMode = workerMode
         self._destroyed = False
         self.urlHandlers = {}
+        self.workUrlHandlers = {}
 
 
     def setup(self, context=None):
@@ -83,6 +85,8 @@ class Application(object):
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
 
+        # Call API-specific setup functions
+        self._callApiSpecific('setup', self, self.context)
 
         # Setup a worker if configured
         worker = self.context.get('worker')
@@ -94,17 +98,20 @@ class Application(object):
             # Setup a worker or proxy based on mode
             if self._workerMode:
                 # Get app-specific work handlers
-                handlers = self._getWorkHandlers()
+                handlers = self.workUrlHandlers
 
                 # If an email work tag is configured, add an email work handler
                 emailWorkTag = self.context.get('emailWorkTag')
                 if emailWorkTag is not None:
-                    handlers.append(
-                        (emailWorkTag, Coronado.Email.SendEmail, self.context))
+                    handlers[emailWorkTag] = Coronado.Email.SendEmail
+
+                # Convert to Tornado-style tuple
+                workUrlHandlers = [mapping + (self.context,) 
+                        for mapping in zip(handlers.keys(), handlers.values())]
 
                 # Create a worker
                 worker = self.context['worker'] = classes['worker'](
-                        handlers=handlers, **worker)
+                        handlers=workUrlHandlers, **worker)
             else:
                 # Create a worker proxy
                 worker = self.context['worker'] = classes['proxy'](**worker)
@@ -116,9 +123,6 @@ class Application(object):
             {
                 'non-public': ['worker']
             })
-
-        # Call API-specific setup functions
-        self._callApiSpecific('setup', self, self.context)
 
         # Define url handlers
         urls = {}
@@ -162,7 +166,14 @@ class Application(object):
 
 
     def addUrlHandlers(self, version, urlHandlers):
-        self.urlHandlers[version] = urlHandlers
+        if version in self.urlHandlers:
+            self.urlHandlers[version].update(urlHandlers)
+        else:
+            self.urlHandlers[version] = urlHandlers
+
+
+    def addWorkUrlHandlers(self, urlHandlers):
+        self.workUrlHandlers.update(urlHandlers)
 
 
     def destroy(self):
@@ -227,14 +238,6 @@ class Application(object):
             cursor.execute("SET wait_timeout=31536000")
 
         return database
-
-
-    def _getUrlHandlers(self):
-        return []
-
-
-    def _getWorkHandlers(self):
-        return []
 
 
     def _callApiSpecific(self, functionName, *args, **kwargs):

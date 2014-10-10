@@ -186,11 +186,11 @@ class Worker(WorkerInterface):
         self._ioloop = ioloop is not None and ioloop or IOLoop.current()
 
 
-    def respond(self, requestId, body, contentType, contentEncoding):
+    def respond(self, requestId, replyTo, body, contentType, contentEncoding):
         raise NotImplementedError()
 
 
-    def _onRequest(self, id, tag, body, contentType, contentEncoding):
+    def _onRequest(self, id, tag, body, contentType, contentEncoding, replyTo):
         '''
         Callback for handling messages, called by subclasses.
         '''
@@ -218,7 +218,7 @@ class Worker(WorkerInterface):
 
             # If response expected, return an error response
             if id is not None:
-                self.respond(id, json.dumps({'error': str(e)}), 
+                self.respond(id, replyTo, json.dumps({'error': str(e)}), 
                         'application/json', 'utf-8')
         else:
             # If no request ID, don't do anything
@@ -226,7 +226,8 @@ class Worker(WorkerInterface):
                 return
 
             # Respond when the worker operation is complete
-            self._ioloop.add_future(when(result), partial(self._respond, id))
+            self._ioloop.add_future(when(result), 
+                    partial(self._respond, id, replyTo))
 
 
     def _findHandler(self, id, tag, body, contentType, contentEncoding):
@@ -266,14 +267,14 @@ class Worker(WorkerInterface):
         return handler, args, kwargs
 
 
-    def _respond(self, requestId, resultFuture):
+    def _respond(self, requestId, replyTo, resultFuture):
         try:
             result = resultFuture.result()
         except Exception as e:
             trace = traceback.format_exc()
             logging.error(trace)
 
-            self.respond(requestId, json.dumps(dict(error=str(e))), 
+            self.respond(requestId, replyTo, json.dumps(dict(error=str(e))),
                     'application/json', 'utf-8')
         else:
             # Respond with the worker's result
@@ -288,12 +289,13 @@ class Worker(WorkerInterface):
                 # Other return values not supported
                 logging.warning('Result value of type %s not supported', 
                         str(type(result)))
-                self.respond(requestId, json.dumps(
+                self.respond(requestId, replyTo, json.dumps(
                     dict(error='Worker error: unsupported result type')),
                     'application/json', 'utf-8')
                 return
 
-            self.respond(requestId, result, contentType, contentEncoding)
+            self.respond(requestId, replyTo, result, contentType, 
+                    contentEncoding)
 
 
     # Non-public instance attributes

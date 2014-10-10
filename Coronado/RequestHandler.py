@@ -167,3 +167,13 @@ def withJsonBody(attrName='jsonBody', charset='UTF-8'):
         return wrapper
 
     return decorator
+
+
+def finish(func):
+    @wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            func()
+        finally:
+            if not self._finished:
+                self.finish()

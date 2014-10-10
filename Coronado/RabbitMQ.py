@@ -12,8 +12,9 @@ from pika.spec import BasicProperties
 import tornado.concurrent
 from tornado.ioloop import IOLoop
 
-from Worker import Worker as BaseWorker
-from Worker import WorkerProxy as BaseWorkerProxy
+from .Worker import Worker as BaseWorker
+from .Worker import WorkerProxy as BaseWorkerProxy
+from .Concurrent import when
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ class ConnectionError(Exception):
 
 class SimpleClient(object):
 
-    def __init__(self, host, port, messageHandler, ioloop=None):
+    def __init__(self, host, port, messageHandler=None, ioloop=None):
         self._host = host
         self._port = port
         self._messageHandler = messageHandler
@@ -50,8 +51,51 @@ class SimpleClient(object):
                 logger.info('Declared RabbitMQ queue %s', queueName)
 
 
+    def declare(self, queueName, passive=False, durable=False,
+            exclusive=False, auto_delete=False, nowait=False,
+            arguments=None):
+        declareFuture = tornado.concurrent.Future()
+
+        def onQueueDeclared(methodFrame):
+            logger.info('Declared RabbitMQ queue %s', queueName)
+            declareFuture.set_result(None)
+
+        # If already connected to RabbitMQ server, declare immediately
+        if self._connected:
+            logger.info('Declaring RabbitMQ queue %s', queueName)
+            self._channel.queue_declare(onQueueDeclared, queueName,
+                    passive=passive, durable=durable, exclusive=exclusive,
+                    auto_delete=auto_delete, nowait=nowait, arguments=arguments)
+            return
+
+        #
+        # Not connected, so connect and then declare
+        #
+
+        def onConnected(connectFuture):
+            try:
+                # Trap connection exceptions if any
+                connectFuture.result()
+            except Exception as e:
+                declareFuture.set_exception(e)
+            else:
+                assert(self._connected)
+                
+                logger.info('Declaring RabbitMQ queue %s', queueName)
+                self._channel.queue_declare(onQueueDeclared, queueName,
+                        passive=passive, durable=durable, exclusive=exclusive,
+                        auto_delete=auto_delete, nowait=nowait, 
+                        arguments=arguments)
+
+        self._ioloop.add_future(self.connect(), onConnected)
+        return declareFuture
+
+
     def connect(self):
         logger.info('Connecting to RabbitMQ server')
+
+        if self._connectFuture is not None:
+            return self._connectFuture
 
         # Make connection
         self._connectFuture = tornado.concurrent.Future()
@@ -74,7 +118,7 @@ class SimpleClient(object):
 
 
     def publish(self, queueName, type, body, contentType, 
-            contentEncoding, correlationId, persistent):
+            contentEncoding, correlationId, persistent, replyTo=None):
         # If already connected to RabbitMQ server, publish immediately
         if self._connected:
             self._publish(
@@ -84,7 +128,8 @@ class SimpleClient(object):
                     contentType=contentType, 
                     contentEncoding=contentEncoding, 
                     correlationId=correlationId,
-                    persistent=persistent)
+                    persistent=persistent,
+                    replyTo=replyTo)
             return
 
         #
@@ -110,7 +155,8 @@ class SimpleClient(object):
                         contentType=contentType, 
                         contentEncoding=contentEncoding, 
                         correlationId=correlationId,
-                        persistent=persistent)
+                        persistent=persistent,
+                        replyTo=replyTo)
 
                 # Resolve the future
                 queueFuture.set_result(None)
@@ -151,7 +197,7 @@ class SimpleClient(object):
 
 
     def _publish(self, queueName, type, body, contentType, 
-            contentEncoding, correlationId, persistent):
+            contentEncoding, correlationId, persistent, replyTo):
 
         # Define properties
         properties = BasicProperties(
@@ -159,7 +205,8 @@ class SimpleClient(object):
                 content_encoding=contentEncoding,
                 type=type,
                 delivery_mode=persistent and 2 or None,
-                correlation_id=correlationId)
+                correlation_id=correlationId,
+                reply_to=replyTo)
 
         # Publish to RabbitMQ server
         self._channel.basic_publish(exchange='', 
@@ -240,6 +287,11 @@ class WorkerProxy(BaseWorkerProxy):
         self._client.setup(self._requestQueueName, self._responseQueueName)
 
 
+    def asyncSetup(self):
+        return when(self._client.declare(self._requestQueueName, durable=True),
+                self._client.declare(self._responseQueueName, durable=True))
+
+
     def start(self):
         # Start consuming from the response queue
         self._client.startConsuming(self._responseQueueName)
@@ -284,7 +336,8 @@ class WorkerProxy(BaseWorkerProxy):
                 contentType=contentType,
                 contentEncoding=contentEncoding,
                 correlationId=id,
-                persistent=True)
+                persistent=True,
+                replyTo=self._responseQueueName)
 
 
     def _onMessage(self, properties, body):
@@ -302,12 +355,11 @@ class WorkerProxy(BaseWorkerProxy):
 class Worker(BaseWorker):
 
     def __init__(self, handlers, host, port, requestQueueName,
-            responseQueueName, ioloop=None, shutdownDelay=10.0):
+            ioloop=None, shutdownDelay=10.0, **kwargs):
         # Call parent
         super(Worker, self).__init__(handlers, ioloop)
 
         self._requestQueueName = requestQueueName
-        self._responseQueueName = responseQueueName
         self._shutdownDelay = shutdownDelay
 
         # Create a client
@@ -315,7 +367,7 @@ class Worker(BaseWorker):
 
 
     def setup(self):
-        self._client.setup(self._requestQueueName, self._responseQueueName)
+        self._client.setup(self._requestQueueName)
 
 
     def start(self):
@@ -350,12 +402,12 @@ class Worker(BaseWorker):
         return future
 
 
-    def respond(self, requestId, body, contentType, contentEncoding):
+    def respond(self, requestId, replyTo, body, contentType, contentEncoding):
         '''
         Publish a message to the response queue. 
         '''
         return self._client.publish(
-                queueName=self._responseQueueName,
+                queueName=replyTo,
                 type=None,
                 body=body,
                 contentType=contentType,
@@ -371,10 +423,10 @@ class Worker(BaseWorker):
                 tag=properties.type, 
                 body=body, 
                 contentType=properties.content_type,
-                contentEncoding=properties.content_encoding)
+                contentEncoding=properties.content_encoding,
+                replyTo=properties.reply_to)
 
 
     _requestQueueName = None
-    _responseQueueName = None
     _client = None
     _shutdownDelay = None

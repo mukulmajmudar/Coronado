@@ -55,6 +55,8 @@ class CollectionProxy(object):
             self.trigger('added', **args);
             '''
 
+            return modelProxy
+
         return transform(responseFuture, onAdded, ioloop=self.ioloop)
 
 
