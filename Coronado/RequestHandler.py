@@ -127,6 +127,10 @@ class RequestHandler(tornado.web.RequestHandler):
         })
 
 
+    def data_received(self, chunk):
+        pass
+
+
     def _getJsonBody(self, charset='UTF-8'):
         contentType, reqCharset = parseContentType(
                 self.request.headers.get('Content-Type'))
