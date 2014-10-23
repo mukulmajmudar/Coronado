@@ -121,7 +121,8 @@ class Application(object):
 
             self.addToContextFlatten(
             {
-                'non-public': ['worker']
+                'non-public': ['worker'],
+                'public': ['getNewDbConnection']
             })
 
         # Define url handlers
