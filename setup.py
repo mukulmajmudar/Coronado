@@ -5,7 +5,7 @@ setup(
     name='Coronado',
     version='1.0',
     scripts=['coronado.py'],
-    packages=['Coronado'],
+    packages=['Coronado', 'Coronado/RabbitMQ'],
     install_requires=
     [
         'tornado',

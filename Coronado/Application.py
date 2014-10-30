@@ -15,8 +15,8 @@ from MySQLdb.cursors import DictCursor
 
 import Coronado
 import Coronado.Testing
-from . import Email
-import RabbitMQ
+from . import Email, RabbitMQ, EventManager
+from .Concurrent import when
 
 logger = logging.getLogger(__name__)
 
@@ -88,42 +88,11 @@ class Application(object):
         # Call API-specific setup functions
         self._callApiSpecific('setup', self, self.context)
 
-        # Setup a worker if configured
-        worker = self.context.get('worker')
-        if worker:
-            workerType = worker['type']
-            del worker['type']
-            classes = workerClasses[workerType]
+        # Setup worker if configured
+        self.setupWorker()
 
-            # Setup a worker or proxy based on mode
-            if self._workerMode:
-                # Get app-specific work handlers
-                handlers = self.workUrlHandlers
-
-                # If an email work tag is configured, add an email work handler
-                emailWorkTag = self.context.get('emailWorkTag')
-                if emailWorkTag is not None:
-                    handlers[emailWorkTag] = Coronado.Email.SendEmail
-
-                # Convert to Tornado-style tuple
-                workUrlHandlers = [mapping + (self.context,) 
-                        for mapping in zip(handlers.keys(), handlers.values())]
-
-                # Create a worker
-                worker = self.context['worker'] = classes['worker'](
-                        handlers=workUrlHandlers, **worker)
-            else:
-                # Create a worker proxy
-                worker = self.context['worker'] = classes['proxy'](**worker)
-
-            worker.setup()
-            worker.start()
-
-            self.addToContextFlatten(
-            {
-                'non-public': ['worker'],
-                'public': ['getNewDbConnection']
-            })
+        # Setup eventManager if configured
+        self.setupEventManager()
 
         # Define url handlers
         urls = {}
@@ -142,6 +111,71 @@ class Application(object):
         self.tornadoApp = tornado.web.Application(urlHandlers)
 
         self.context['tornadoApp'] = self.tornadoApp
+        self.addToContextFlatten(
+        {
+            'public': ['getNewDbConnection']
+        })
+
+
+    def setupWorker(self):
+        worker = self.context.get('worker')
+        if not worker:
+            return
+
+        workerType = worker.pop('type')
+        classes = workerClasses[workerType]
+
+        # Setup a worker or proxy based on mode
+        if self._workerMode:
+            # Get app-specific work handlers
+            handlers = self.workUrlHandlers
+
+            # If an email work tag is configured, add an email work handler
+            emailWorkTag = self.context.get('emailWorkTag')
+            if emailWorkTag is not None:
+                handlers[emailWorkTag] = Coronado.Email.SendEmail
+
+            # Convert to Tornado-style tuple
+            workUrlHandlers = [mapping + (self.context,) 
+                    for mapping in zip(handlers.keys(), handlers.values())]
+
+            # Create a worker
+            worker = self.context['worker'] = classes['worker'](
+                    handlers=workUrlHandlers, **worker)
+        else:
+            # Create a worker proxy
+            worker = self.context['worker'] = classes['proxy'](**worker)
+
+        worker.setup()
+        worker.start()
+
+        self.addToContextFlatten(
+        {
+            'non-public': ['worker'],
+        })
+
+
+    def setupEventManager(self):
+        eventManager = self.context.get('eventManager')
+        if not eventManager:
+            return
+
+        # Create an event manager 
+        eventManagerType = eventManager.pop('type')
+        eventManager = self.context['eventManager'] = \
+                EventManager.make(eventManagerType, **eventManager)
+
+        def onEventManagerSetup(setupFuture):
+            # Trap exceptions, if any
+            setupFuture.result()
+
+        self.context['ioloop'].add_future(
+                when(eventManager.setup()), onEventManagerSetup)
+
+        self.addToContextFlatten(
+        {
+            'public': ['eventManager'],
+        })
 
 
     def startListening(self):
