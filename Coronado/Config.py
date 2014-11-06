@@ -110,7 +110,7 @@ class Config(dict):
             'port': self._getSmtpPort(),
             'email': self._getSmtpEmail(),
             'password': self._getSmtpPassword()
-        },
+        }
 
 
     def _getSmtpHost(self):
