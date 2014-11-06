@@ -13,7 +13,7 @@ import logging
 
 sys.path.append(os.getcwd())
 
-from config import config
+from Config import config
 import Coronado
 
 logger = logging.getLogger(__name__)
@@ -44,8 +44,8 @@ def loadExtensions():
 def startInTestMode(fixture, *args, **kwargs):
     scaffold = None
     try:
-        testsMod = __import__(config['testPkg'].__name__ + '.config')
-        config = testsMod.config.config
+        testsMod = __import__(config['testPkg'].__name__ + '.Config')
+        config = testsMod.Config.config
 
         # Setup a testing scaffold
         scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
