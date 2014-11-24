@@ -45,8 +45,10 @@ class CollectionProxy(object):
             modelProxy.httpClient = self.httpClient;
 
             # Cache
+            '''
             self._cache[self.uri + '/' + modelProxy['id']] \
                 = json.dumps(modelProxy)
+            '''
 
             # TODO: Trigger "added" event
             '''
@@ -62,7 +64,8 @@ class CollectionProxy(object):
 
     def get(self, id, fetch=False):
         id = str(id)
-        entry = self._cache.get(self.uri + '/' + id);
+        #entry = self._cache.get(self.uri + '/' + id);
+        entry = None
         if entry:
             modelProxy = self._makeModelProxy(json.loads(entry))
             modelProxy.uri = self.uri + '/' + id;
@@ -71,7 +74,7 @@ class CollectionProxy(object):
         modelProxy = self._makeModelProxy(dict(id=id))
 
         uri = self.uri;
-        cache = self._cache;
+        #cache = self._cache;
 
         # TODO: listen for "fetched" event on the model and update cached
         # value
@@ -87,7 +90,36 @@ class CollectionProxy(object):
         return fetch and modelProxy.fetch() or modelProxy
 
 
+    def getMany(self, ids, responseKey=None):
+
+        # If ids is empty, return empty
+        if len(ids) == 0:
+            return []
+
+        # Default response key is the model's plural
+        if responseKey is None:
+            responseKey = self.modelProxyClass.plural
+
+        # Make request for many models
+        responseFuture = self.httpClient.fetch(
+                request=self.uri + '.getMany',
+                method='POST',
+                headers={'Content-Type': 'application/json; charset=UTF-8'},
+                body=json.dumps(ids))
+
+        def onResponse(responseFuture):
+            response = responseFuture.result()
+            jsonResponse = json.loads(response.body)
+            return [self._makeModelProxy(attrs) 
+                    for attrs in jsonResponse[responseKey]]
+
+        return transform(responseFuture, onResponse, ioloop=self.ioloop)
+
+
     def _makeModelProxy(self, attrs):
+        if attrs is None:
+            return None
+
         attrs.update(uri=self.uri + '/' + attrs['id'],
                 httpClient=self.httpClient)
 
