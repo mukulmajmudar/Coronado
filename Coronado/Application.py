@@ -45,14 +45,16 @@ class Application(object):
     httpServer = None
     urlHandlers = None
     workUrlHandlers = None
+    xheaders = None
     started = False
 
-    def __init__(self, config, workerMode=False):
+    def __init__(self, config, workerMode=False, xheaders=True):
         self.config = config
         self._workerMode = workerMode
         self._destroyed = False
         self.urlHandlers = {}
         self.workUrlHandlers = {}
+        self.xheaders = xheaders
 
 
     def setup(self, context=None):
@@ -184,7 +186,7 @@ class Application(object):
 
         # Create a new HTTPServer
         from tornado.httpserver import HTTPServer
-        self.httpServer = HTTPServer(self.tornadoApp)
+        self.httpServer = HTTPServer(self.tornadoApp, xheaders=self.xheaders)
 
         # Start listening
         self.httpServer.listen(self.context['port'])

@@ -62,7 +62,10 @@ class CollectionProxy(object):
         return transform(responseFuture, onAdded, ioloop=self.ioloop)
 
 
-    def get(self, id, fetch=False):
+    def get(self, id, fetch=False, method='GET', headers=None, body=None):
+        if headers is None:
+            headers = {}
+
         id = str(id)
         #entry = self._cache.get(self.uri + '/' + id);
         entry = None
@@ -87,10 +90,12 @@ class CollectionProxy(object):
         modelProxy.on('fetched', onFetched)
         '''
 
-        return fetch and modelProxy.fetch() or modelProxy
+        return fetch and modelProxy.fetch(method, headers, body) or modelProxy
 
 
-    def getMany(self, ids, responseKey=None):
+    def getMany(self, ids, responseKey=None, method='POST', headers=None):
+        if headers is None:
+            headers = {}
 
         # If ids is empty, return empty
         if len(ids) == 0:
