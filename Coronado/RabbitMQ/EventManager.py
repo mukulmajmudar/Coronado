@@ -30,7 +30,7 @@ class EventManager(BaseEventManager):
                 self.client.declareExchange(self.directExName, 'direct'))
 
 
-    def on(self, sourceId, eventType, handler, listenerId=None):
+    def on(self, sourceId, eventType, listener, listenerId=None):
         # Figure out the exchange and queue names based on whether
         # event type corresponds to a topic or direct exchange
         exchangeType = '.' in eventType and 'topic' or 'direct'
@@ -70,7 +70,7 @@ class EventManager(BaseEventManager):
             consumerTag = consumeFuture.result()
 
             # Associate message handler with consumer tag
-            self._saveHandler(consumerTag, handler)
+            self._saveHandler(consumerTag, listener)
 
             return consumerTag
 

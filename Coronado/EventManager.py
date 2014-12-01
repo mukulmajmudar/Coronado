@@ -12,13 +12,13 @@ class EventManager(object):
         pass
 
 
-    def on(self, sourceId, eventType, handler, listenerId=None):
+    def on(self, sourceId, eventType, listener, listenerId=None):
         '''
         Listen for an event on the given source.
 
         sourceId: ID of the event source
         eventType: type of event for which to listen
-        handler: function to call when the specified event occurs
+        listener: function to call when the specified event occurs
         listenerId: ID of this event listening request (default None 
             means listener ID will be auto-generated)
         '''
