@@ -81,6 +81,7 @@ class Config(dict):
             'user': self._getMysqlUser(),
             'password': self._getMysqlPassword(),
             'dbName': self._getMysqlDbName(),
+            'schemaFilePath': self._getMySchemaFilePath()
         }
 
 
@@ -99,6 +100,8 @@ class Config(dict):
     def _getMysqlDbName(self):
         raise NotImplementedError()
 
+    def _getMySchemaFilePath(self):
+        raise NotImplementedError()
 
     def _getSmtp(self):
         '''

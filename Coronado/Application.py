@@ -149,7 +149,7 @@ class Application(object):
             worker = self.context['worker'] = classes['proxy'](**worker)
 
         worker.setup()
-        worker.start()
+        self.context['ioloop'].run_sync(worker.start)
 
         self.addToContextFlatten(
         {
@@ -167,12 +167,7 @@ class Application(object):
         eventManager = self.context['eventManager'] = \
                 EventManager.make(eventManagerType, **eventManager)
 
-        def onEventManagerSetup(setupFuture):
-            # Trap exceptions, if any
-            setupFuture.result()
-
-        self.context['ioloop'].add_future(
-                when(eventManager.setup()), onEventManagerSetup)
+        self.context['ioloop'].run_sync(eventManager.setup)
 
         self.addToContextFlatten(
         {

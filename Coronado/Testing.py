@@ -9,7 +9,6 @@ import json
 import tempfile
 from contextlib import closing
 import argparse
-import pdb
 
 import MySQLdb
 from MySQLdb.cursors import DictCursor
@@ -72,7 +71,7 @@ class Scaffold(object):
 
         cmd = 'mysql --user=%s --password="%s" %s < %s' \
                 % (mysql['user'], mysql['password'], mysql['dbName'], 
-                        mysql['schemaFileName'])
+                        mysql['schemaFilePath'])
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Failed to install database schema')
@@ -210,7 +209,7 @@ class TestCase(_TestRoot):
     _ioloop = None
 
 
-def installFixture(database, fixture):
+def _installFixture(database, fixture):
     if 'tableOrder' not in fixture:
         return
 
@@ -222,6 +221,29 @@ def installFixture(database, fixture):
                     + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
             with closing(database.cursor()) as cursor:
                 cursor.execute(query, tuple(row.values()))
+
+
+def installFixture(database, fixture):
+    # If there is no "self" key in self.fixture, that means the
+    # entire fixture dict is the self fixture
+    if 'self' not in fixture:
+        _installFixture(database, fixture)
+    else:
+        # Fixtures for multiple apps are given
+        for appName, fix in fixture.items():
+            if appName == 'self':
+                _installFixture(database, fix)
+            else:
+                # Output fixture into a JSON file and wait for confirmation
+                # from user that it has been loaded into the correct app
+                f = tempfile.NamedTemporaryFile(
+                        prefix=appName + '-', suffix='.json',
+                        delete=False)
+                json.dump(fix, f)
+                f.flush()
+                raw_input(('Please load the file "%s" into a test ' +
+                    'instance of "%s". Press ENTER to continue.') 
+                    % (f.name, appName))
 
 
 class FixtureMixin(_TestRoot):
@@ -265,25 +287,8 @@ class FixtureMixin(_TestRoot):
         if not isinstance(fixture, dict):
             raise IllegalArgument('fixture must be a dictionary')
 
-        # If there is no "self" key in self.fixture, that means the
-        # entire fixture dict is the self fixture
-        if 'self' not in fixture:
-            installFixture(self._database, fixture)
-        else:
-            # Fixtures for multiple apps are given
-            for appName, fix in fixture.items():
-                if appName == 'self':
-                    installFixture(self._database, fix)
-                else:
-                    # Output fixture into a JSON file and wait for confirmation
-                    # from user that it has been loaded into the correct app
-                    f = tempfile.NamedTemporaryFile(prefix=appName + '-', suffix='.json',
-                            delete=False)
-                    json.dump(fix, f)
-                    f.flush()
-                    raw_input(('Please load the file "%s" into a test ' +
-                        'instance of "%s". Press ENTER to continue.') 
-                        % (f.name, appName))
+        # Install the fixture
+        installFixture(self._database, fixture)
 
 
     def tearDown(self):

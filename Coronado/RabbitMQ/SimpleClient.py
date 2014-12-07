@@ -6,6 +6,7 @@ from pika.adapters import TornadoConnection
 from pika.spec import BasicProperties
 import tornado.concurrent
 from tornado.ioloop import IOLoop
+from ..Concurrent import transform
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -179,7 +180,7 @@ class SimpleClient(object):
                     self._onMessage, queueName)
             logger.info('Started consuming from queue %s', queueName)
 
-        self._ioloop.add_future(self.connect(), onConnected)
+        return transform(self.connect(), onConnected, ioloop=self._ioloop)
 
 
     def stopConsuming(self):
@@ -190,7 +191,6 @@ class SimpleClient(object):
             stopFuture.set_result(None)
         self._channel.basic_cancel(onCanceled, self._consumerTag)
         return stopFuture
-
 
 
     def _publish(self, queueName, type, body, contentType, 

@@ -2,7 +2,6 @@
 import sys
 import argparse
 import argh
-import pdb
 import traceback
 import multiprocessing
 from functools import partial
@@ -42,10 +41,11 @@ def loadExtensions():
 
 
 def startInTestMode(fixture, *args, **kwargs):
+    global config
     scaffold = None
     try:
-        testsMod = __import__(config['testPkg'].__name__ + '.Config')
-        config = testsMod.Config.config
+        testsMod = __import__(config['testPkg'].__name__ + '.TestConfig')
+        config = testsMod.TestConfig.config
 
         # Setup a testing scaffold
         scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
@@ -55,7 +55,7 @@ def startInTestMode(fixture, *args, **kwargs):
 
         # Load test fixture if any
         if fixture is not None:
-            fixture = json.load(fixture)
+            fixture = json.load(open(fixture))
             Coronado.Testing.installFixture(
                     app.context['database'], fixture)
 

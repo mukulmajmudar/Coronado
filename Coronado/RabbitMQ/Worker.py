@@ -27,7 +27,8 @@ class WorkerProxy(BaseWorkerProxy):
 
 
     def setup(self):
-        self._client.setup(self._requestQueueName, self._responseQueueName)
+        return self._client.setup(
+                self._requestQueueName, self._responseQueueName)
 
 
     def asyncSetup(self):
@@ -37,7 +38,7 @@ class WorkerProxy(BaseWorkerProxy):
 
     def start(self):
         # Start consuming from the response queue
-        self._client.startConsuming(self._responseQueueName)
+        return self._client.startConsuming(self._responseQueueName)
 
 
     def stop(self):
@@ -110,12 +111,12 @@ class Worker(BaseWorker):
 
 
     def setup(self):
-        self._client.setup(self._requestQueueName)
+        return self._client.setup(self._requestQueueName)
 
 
     def start(self):
         # Start consuming from the request queue
-        self._client.startConsuming(self._requestQueueName)
+        return self._client.startConsuming(self._requestQueueName)
 
 
     def stop(self):
