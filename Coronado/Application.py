@@ -66,6 +66,13 @@ class Application(object):
         # Initialize context to be a copy of the configuration
         self.context = self.config.copy()
 
+        # Deep copy worker and event manager params (copy.deepcopy doesn't 
+        # work presumably because config contains classes)
+        if self.context.get('worker'):
+            self.context['worker'] = self.context['worker'].copy()
+        if self.context.get('eventManager'):
+            self.context['eventManager'] = self.context['eventManager'].copy()
+
         # Override with passed in arguments (customization)
         self.context.update(context)
 

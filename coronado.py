@@ -40,30 +40,73 @@ def loadExtensions():
     return extensions
 
 
-def startInTestMode(fixture, *args, **kwargs):
+def startInTestMode(fixture, comprehensive, server, workers, numWorkers, 
+        *args, **kwargs):
     global config
     scaffold = None
     try:
         testsMod = __import__(config['testPkg'].__name__ + '.TestConfig')
         config = testsMod.TestConfig.config
 
-        # Setup a testing scaffold
-        scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
-                *args, **kwargs)
-        scaffold.setup()
-        app = scaffold.app
+        def startTestApp(fixture, stdinFileNo=None):
+            if stdinFileNo is not None:
+                sys.stdin = os.fdopen(stdinFileNo)
 
-        # Load test fixture if any
-        if fixture is not None:
-            fixture = json.load(open(fixture))
-            Coronado.Testing.installFixture(
-                    app.context['database'], fixture)
+            # Setup a testing scaffold
+            scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
+                    *args, **kwargs)
+            scaffold.setup()
+            app = scaffold.app
 
-        # Start listening for requests
-        scaffold.app.startListening()
+            # Load test fixture if any
+            if fixture is not None:
+                fixture = json.load(open(fixture))
+                Coronado.Testing.installFixture(
+                        app.context['database'], fixture)
 
-        # Start async event loop
-        scaffold.app.startEventLoop()
+            # Install SIGTERM handler
+            signal.signal(signal.SIGTERM, partial(onSigTerm, scaffold))
+
+            # Start listening for requests
+            scaffold.app.startListening()
+
+            logger.info('Started web server')
+
+            # Start async event loop
+            scaffold.app.startEventLoop()
+
+        if workers:
+            logger.info('Starting workers...')
+
+            # Setup a testing scaffold
+            scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
+                    *args, **kwargs)
+            scaffold.setup()
+            app = scaffold.app
+
+            # Load test fixture if any
+            if fixture is not None:
+                fixture = json.load(open(fixture))
+                Coronado.Testing.installFixture(
+                        app.context['database'], fixture)
+
+            startWorkers(numWorkers, *args, **kwargs)
+        elif server:
+            logger.info('Starting web server...')
+            startTestApp(fixture)
+        elif comprehensive:
+            logger.info('Starting web server and workers...')
+
+            # Start web server
+            p = multiprocessing.Process(target=startTestApp, 
+                    args=(fixture, sys.stdin.fileno()))
+            p.start()
+
+            # Start workers
+            startWorkers(numWorkers, *args, **kwargs)
+
+            p.join()
+
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -165,7 +208,8 @@ def start(comprehensive=True, server=False, workers=False,
     Coronado.configureLogging(level=logLevel, format=logFormat)
 
     if test:
-        startInTestMode(fixture, *args, **kwargs)
+        startInTestMode(fixture, comprehensive, server, workers, numWorkers, 
+                *args, **kwargs)
     elif workers:
         logger.info('Starting workers...')
         startWorkers(numWorkers, *args, **kwargs)
