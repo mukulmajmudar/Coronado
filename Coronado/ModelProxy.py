@@ -20,13 +20,16 @@ class ModelProxy(dict):
         super(ModelProxy, self).__init__(*args, **kwargs)
 
 
-    def fetch(self, method='GET', headers=None, body=None):
+    def fetch(self, uri=None, method='GET', headers=None, body=None):
         if headers is None:
             headers = {}
 
+        if uri is None:
+            uri = self.uri
+
         # Fetch and return
         fetchFuture = self.httpClient.fetch(
-                request=self.uri, method=method, headers=headers, body=body)
+                request=uri, method=method, headers=headers, body=body)
 
         def onFetch(fetchFuture):
             response = fetchFuture.result()

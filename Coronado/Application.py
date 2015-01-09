@@ -44,7 +44,7 @@ class Application(object):
     tornadoApp = None
     httpServer = None
     urlHandlers = None
-    workUrlHandlers = None
+    workHandlers = None
     xheaders = None
     started = False
 
@@ -53,7 +53,7 @@ class Application(object):
         self._workerMode = workerMode
         self._destroyed = False
         self.urlHandlers = {}
-        self.workUrlHandlers = {}
+        self.workHandlers = {}
         self.xheaders = xheaders
 
 
@@ -137,7 +137,7 @@ class Application(object):
         # Setup a worker or proxy based on mode
         if self._workerMode:
             # Get app-specific work handlers
-            handlers = self.workUrlHandlers
+            handlers = self.workHandlers
 
             # If an email work tag is configured, add an email work handler
             emailWorkTag = self.context.get('emailWorkTag')
@@ -145,12 +145,12 @@ class Application(object):
                 handlers[emailWorkTag] = Coronado.Email.SendEmail
 
             # Convert to Tornado-style tuple
-            workUrlHandlers = [mapping + (self.context,) 
+            workHandlers = [mapping + (self.context,) 
                     for mapping in zip(handlers.keys(), handlers.values())]
 
             # Create a worker
             worker = self.context['worker'] = classes['worker'](
-                    handlers=workUrlHandlers, **worker)
+                    handlers=workHandlers, **worker)
         else:
             # Create a worker proxy
             worker = self.context['worker'] = classes['proxy'](**worker)
@@ -211,8 +211,15 @@ class Application(object):
             self.urlHandlers[version] = urlHandlers
 
 
-    def addWorkUrlHandlers(self, urlHandlers):
-        self.workUrlHandlers.update(urlHandlers)
+    def addWorkHandlers(self, handlers):
+        self.workHandlers.update(handlers)
+
+
+    def addWorkUrlHandlers(self, handlers):
+        '''
+        Deprecated. Use addWorkHandlers() instead.
+        '''
+        return self.addWorkHandlers(handlers)
 
 
     def destroy(self):
