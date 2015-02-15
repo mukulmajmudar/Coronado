@@ -328,6 +328,9 @@ class WorkHandlerCfgError(Exception):
 class WorkHandler(object):
     # Public instance attributes
     request = None
+    ioloop = None
+    database = None
+    httpClient = None
 
 
     def __init__(self, request, **kwargs):
@@ -361,9 +364,9 @@ class WorkHandler(object):
                 raise WorkHandlerCfgError('A worker is required in order to ' +
                     'send error emails')
 
-        self._ioloop = self._context['ioloop']
-        self._database = self._context['database']
-        self._httpClient = self._context['httpClient']
+        self.ioloop = self._ioloop = self._context['ioloop']
+        self.database = self._database = self._context['database']
+        self.httpClient = self._httpClient = self._context['httpClient']
 
         # Store public and non-public context attributes as self's attributes 
         # for ease of access in request handlers

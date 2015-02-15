@@ -12,10 +12,14 @@ class ReqHandlerCfgError(Exception):
 
 
 class RequestHandler(tornado.web.RequestHandler):
+    context = None
+    ioloop = None
+    database = None
+    httpClient = None
 
     def initialize(self, **kwargs):
         # Initialize context with defaults
-        self._context = RequestHandler._Context(
+        self.context = self._context = RequestHandler._Context(
         {
             'allowedCORSOrigins': [],
             'sendEmailOnError': False,
@@ -39,9 +43,9 @@ class RequestHandler(tornado.web.RequestHandler):
                     'send error emails')
 
 
-        self._ioloop = self._context['ioloop']
-        self._database = self._context['database']
-        self._httpClient = self._context['httpClient']
+        self.ioloop = self._ioloop = self._context['ioloop']
+        self.database = self._database = self._context['database']
+        self.httpClient = self._httpClient = self._context['httpClient']
 
         # Store public and non-public context attributes as self's attributes 
         # for ease of access in request handlers
