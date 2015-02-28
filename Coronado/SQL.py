@@ -15,3 +15,7 @@ def whereEquals(equalConditions, coordinator='AND'):
     coordinator = coordinator + ' '
     return coordinator.join(
             [key + ' = %(' + key + ')s ' for key in equalConditions])
+
+
+def makePlaceholderList(sourceList):
+    return ','.join(['%s'] * len(sourceList))

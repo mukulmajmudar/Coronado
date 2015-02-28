@@ -209,7 +209,7 @@ class TestCase(_TestRoot):
     _ioloop = None
 
 
-def _installFixture(database, fixture):
+def _installFixture(database, fixture, ignoreConflicts):
     if 'tableOrder' not in fixture:
         return
 
@@ -220,19 +220,25 @@ def _installFixture(database, fixture):
                     + ','.join(row.keys()) \
                     + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
             with closing(database.cursor()) as cursor:
-                cursor.execute(query, tuple(row.values()))
+                try:
+                    cursor.execute(query, tuple(row.values()))
+                except MySQLdb.IntegrityError:
+                    if ignoreConflicts:
+                        continue
+                    else:
+                        raise
 
 
-def installFixture(database, fixture):
+def installFixture(database, fixture, ignoreConflicts=False):
     # If there is no "self" key in self.fixture, that means the
     # entire fixture dict is the self fixture
     if 'self' not in fixture:
-        _installFixture(database, fixture)
+        _installFixture(database, fixture, ignoreConflicts)
     else:
         # Fixtures for multiple apps are given
         for appName, fix in fixture.items():
             if appName == 'self':
-                _installFixture(database, fix)
+                _installFixture(database, fix, ignoreConflicts)
             else:
                 # Output fixture into a JSON file and wait for confirmation
                 # from user that it has been loaded into the correct app
