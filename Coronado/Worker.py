@@ -341,7 +341,7 @@ class WorkHandler(object):
         # avoid code duplication
 
         # Initialize context with defaults
-        self._context = WorkHandler._Context(
+        self._context = self.context = WorkHandler._Context(
         {
             'allowedCORSOrigins': [],
             'sendEmailOnError': False,
