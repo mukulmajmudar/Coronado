@@ -28,7 +28,7 @@ def exponentialBackoff(firstRetryDelay=1, maxDelay=32):
 
             # If max delay has been reached, time out
             if totalDelay[0] >= maxDelay:
-                logger.info('Maximum delay of %.2f has been exceeded.', 
+                logger.info('Maximum delay of %.2f has been exceeded.',
                         maxDelay)
                 raise Timeout()
 

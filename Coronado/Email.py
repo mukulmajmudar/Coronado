@@ -1,17 +1,16 @@
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-import json
 import string
 import logging
 
-from Worker import WorkHandler
-from Exceptions import MissingArgument
+from .Worker import WorkHandler
+from .Exceptions import MissingArgument
 
 logger = logging.getLogger(__name__)
 
 class SendEmail(WorkHandler):
-     
+
     def __call__(self):
         message = self.request.body
 
@@ -64,20 +63,20 @@ class SendEmail(WorkHandler):
             # Record the MIME type - text/html
             part2 = MIMEText(html, 'html')
 
-            # According to RFC 2046, the last part of a multipart message, in 
+            # According to RFC 2046, the last part of a multipart message, in
             # this case the HTML message, is best and preferred.
             emailMsg.attach(part2)
 
         # Login to our email provider
-        s = smtplib.SMTP(host=smtpArgs['host'], 
+        s = smtplib.SMTP(host=smtpArgs['host'],
                 port=smtpArgs['port'])
         try:
-            x = s.starttls()
+            s.starttls()
             s.login(smtpArgs['email'], smtpArgs['password'])
 
             # Send the message
             logger.info('Sending email to %s', message['recipient'])
-            s.sendmail(smtpArgs['email'], 
+            s.sendmail(smtpArgs['email'],
                     message['recipient'], emailMsg.as_string())
         finally:
             s.quit()

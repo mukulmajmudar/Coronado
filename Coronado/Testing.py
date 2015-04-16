@@ -11,7 +11,6 @@ from contextlib import closing
 import argparse
 
 import MySQLdb
-from MySQLdb.cursors import DictCursor
 import tornado.testing
 
 from .HttpUtil import parseContentType
@@ -45,7 +44,7 @@ class Scaffold(object):
                 % (self._config['mysql']['user'],
                         self._config['mysql']['password'],
                         self._config['mysql']['dbName'],
-                        'DROP DATABASE \\`' + self._config['mysql']['dbName'] 
+                        'DROP DATABASE \\`' + self._config['mysql']['dbName']
                         + '\\`')
         rc = os.system(cmd)
         if rc != 0:
@@ -56,21 +55,22 @@ class Scaffold(object):
         mysql = self._config['mysql']
 
         # Drop database if exists
-        cmd = ('mysql --user=%s --password="%s" --execute="DROP DATABASE IF ' + \
-                'EXISTS \\`%s\\`"') % (mysql['user'], mysql['password'], 
+        cmd = ('mysql --user=%s --password="%s" --execute="DROP DATABASE ' + \
+                'IF EXISTS \\`%s\\`"') % (mysql['user'], mysql['password'],
                         mysql['dbName'])
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Failed to drop previous database')
 
-        cmd = 'mysql --user=%s --password="%s" --execute="CREATE DATABASE \\`%s\\`"' \
-                % (mysql['user'], mysql['password'], mysql['dbName'])
+        cmd = 'mysql --user=%s --password="%s" --execute="CREATE ' + \
+                'DATABASE \\`%s\\`"'
+        cmd = cmd % (mysql['user'], mysql['password'], mysql['dbName'])
         rc = os.system(cmd)
         if rc != 0:
             raise TestEnvironmentError('Failed to create database')
 
         cmd = 'mysql --user=%s --password="%s" %s < %s' \
-                % (mysql['user'], mysql['password'], mysql['dbName'], 
+                % (mysql['user'], mysql['password'], mysql['dbName'],
                         mysql['schemaFilePath'])
         rc = os.system(cmd)
         if rc != 0:
@@ -82,7 +82,7 @@ class Scaffold(object):
 
 class AppTester(Scaffold):
 
-    def __init__(self, config, appClass, unitSuiteBuilder, integSuiteBuilder, 
+    def __init__(self, config, appClass, unitSuiteBuilder, integSuiteBuilder,
             *args, **kwargs):
         super(AppTester, self).__init__(config, appClass, *args, **kwargs)
         self._unitSuiteBuilder = unitSuiteBuilder
@@ -95,7 +95,7 @@ class AppTester(Scaffold):
 
             # Parse command-line args
             argParser = argparse.ArgumentParser()
-            argParser.add_argument('-i', '--integration', action='store_true', 
+            argParser.add_argument('-i', '--integration', action='store_true',
                     help='Run integration tests')
             argParser.add_argument('--all', action='store_true',
                     help='Run both unit and integration tests')
@@ -145,11 +145,11 @@ class AppTester(Scaffold):
 
 class _TestRoot(tornado.testing.AsyncTestCase):
     '''
-    Root class for TestCase and mixins. The purpose of this class is to 
-    consume the "context" and "testType" constructor keyword args before 
+    Root class for TestCase and mixins. The purpose of this class is to
+    consume the "context" and "testType" constructor keyword args before
     forwarding to AsyncTestCase.
 
-    Inspired by: 
+    Inspired by:
     http://rhettinger.wordpress.com/2011/05/26/super-considered-super/
     '''
 
@@ -177,7 +177,7 @@ class TestCase(_TestRoot):
 
         The context argument will be available to subclasses as self._context.
 
-        An optional "testType" keyword argument ("unit" or "integration") can 
+        An optional "testType" keyword argument ("unit" or "integration") can
         be given which will be stored as self._testType for subclasses.
         '''
         self._context = kwargs['context']
@@ -248,7 +248,7 @@ def installFixture(database, fixture, ignoreConflicts=False):
                 json.dump(fix, f)
                 f.flush()
                 raw_input(('Please load the file "%s" into a test ' +
-                    'instance of "%s". Press ENTER to continue.') 
+                    'instance of "%s". Press ENTER to continue.')
                     % (f.name, appName))
 
 
@@ -256,7 +256,7 @@ class FixtureMixin(_TestRoot):
     '''
     Database fixture mixin for TestCase.
 
-    Implement _getFixture() to return either a dictionary or a 
+    Implement _getFixture() to return either a dictionary or a
     JSON file path containing a fixture. The fixture should be
     a dictionary mapping table names to rows.
     '''
@@ -283,7 +283,7 @@ class FixtureMixin(_TestRoot):
         super(FixtureMixin, self).setUp()
 
         # Get the fixture
-        fixture = self._getFixture() 
+        fixture = self._getFixture()
 
         # If fixture is a file path, load it as JSON
         if isinstance(fixture, str):
@@ -309,12 +309,13 @@ class FixtureMixin(_TestRoot):
 
         # Credit: http://stackoverflow.com/a/8912749/1196816
         cmd = ("mysql -u %s -p'%s' -Nse 'show tables' %s " \
-                + "| while read table; do mysql -u %s -p'%s' -e \"truncate table $table\" " \
+                + "| while read table; do mysql -u %s -p'%s' " \
+                + "-e \"truncate table $table\" " \
                 + "%s; done") % (
-                        self._mysqlArgs['user'], 
+                        self._mysqlArgs['user'],
                         self._mysqlArgs['password'],
-                        self._mysqlArgs['dbName'], 
-                        self._mysqlArgs['user'], 
+                        self._mysqlArgs['dbName'],
+                        self._mysqlArgs['user'],
                         self._mysqlArgs['password'],
                         self._mysqlArgs['dbName'])
 
@@ -333,8 +334,8 @@ class FixtureMixin(_TestRoot):
 
 def getInputSets(inputValues):
     '''
-    Returns a generator for (isValid, inputSet, invalidKeys) triples, one for 
-    each combination of valid/invalid key-value pairs in the given input 
+    Returns a generator for (isValid, inputSet, invalidKeys) triples, one for
+    each combination of valid/invalid key-value pairs in the given input
     dictionary.
     '''
 
@@ -368,9 +369,9 @@ def getInputSets(inputValues):
             except KeyError:
                 pass
 
-            # Recurse for the next key. Each recursive call returns a 
+            # Recurse for the next key. Each recursive call returns a
             # generator so we need to iterate through it.
-            for i, s, ik in buildInputSet(keyIdx + 1, inputSet, 
+            for i, s, ik in buildInputSet(keyIdx + 1, inputSet,
                     invalidKeys, isValid):
                 yield i, s, ik
 
@@ -383,16 +384,16 @@ def getInputSets(inputValues):
             # Add this key to the set of invalid keys
             invalidKeys.add(key)
 
-            # Recurse for the next key. Each recursive call returns a 
+            # Recurse for the next key. Each recursive call returns a
             # generator so we need to iterate through it.
-            for i, s, ik in buildInputSet(keyIdx + 1, inputSet, 
+            for i, s, ik in buildInputSet(keyIdx + 1, inputSet,
                     invalidKeys, False):
                 yield i, s, ik
 
 
-    # Need as many for-loops as there are keys. 
+    # Need as many for-loops as there are keys.
     # Solution: use recursion. For each input set to return, there will
-    # be one recursive call for each key. 
+    # be one recursive call for each key.
     return buildInputSet(0, {}, set(), True)
 
 
@@ -428,7 +429,7 @@ class InputSetsMixin(_TestRoot):
 
     def _testInputSet(self, isValid, inputSet, invalidKeys):
         raise NotImplementedError()
-         
+
 
     def _getInputValues(self):
         raise NotImplementedError()

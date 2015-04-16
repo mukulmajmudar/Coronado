@@ -9,7 +9,7 @@ def buildInsertQuery(table, keys):
 
 def whereEquals(equalConditions, coordinator='AND'):
     '''
-    Build a WHERE clause with dictionary-type placeholders where all 
+    Build a WHERE clause with dictionary-type placeholders where all
     conditions are "equals" and the coordinating conjunction is the same.
     '''
     coordinator = coordinator + ' '

@@ -42,7 +42,7 @@ class Validator(object):
                     if result is not True:
                         invalidResults[self._validationOrder[index]] = result
                     index += 1
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 f = tornado.concurrent.Future()
                 f.set_exception(e)
                 return f
@@ -80,7 +80,7 @@ class Validator(object):
 
             # Call validator
             return validator(value)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             if isinstance(e, ValidationError):
                 e.key = key
             f = tornado.concurrent.Future()

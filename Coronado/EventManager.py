@@ -1,5 +1,4 @@
 from tornado.ioloop import IOLoop
-import pdb
 
 class EventManager(object):
 
@@ -19,7 +18,7 @@ class EventManager(object):
         sourceId: ID of the event source
         eventType: type of event for which to listen
         listener: function to call when the specified event occurs
-        listenerId: ID of this event listening request (default None 
+        listenerId: ID of this event listening request (default None
             means listener ID will be auto-generated)
         '''
         raise NotImplementedError()
@@ -45,8 +44,8 @@ class EventManager(object):
         self.messageHandlers[listenerId] = messageHandler
 
 
-def make(type, *args, **kwargs):
-    if type == 'RabbitMQ':
+def make(eventMgrType, *args, **kwargs):
+    if eventMgrType == 'RabbitMQ':
         # Import here to avoid circular dependency
         from .RabbitMQ import EventManager as RMQEventManager
         return RMQEventManager(*args, **kwargs)

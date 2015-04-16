@@ -13,20 +13,20 @@ def configureLogging(level, **kwargs):
 
 def withDefaultLogging(func):
     '''
-    Modifies a function to add argh-style logging arguments. 
+    Modifies a function to add argh-style logging arguments.
 
     Default log level is "warning" and default log format is:
     %(levelname)s:%(name)s (at %(asctime)s): %(message)s
     '''
-    
-    @argh.arg('-l', '--logLevel', 
+
+    @argh.arg('-l', '--logLevel',
             help='one of "debug", "info", "warning", "error", and "critical"')
-    @argh.arg('--logFormat', 
+    @argh.arg('--logFormat',
             help='Python-like log format (see Python docs for details)')
     @wraps(func)
     def wrapper(*args, **kwargs):
         logLevel = kwargs.pop('logLevel', 'warning')
-        logFormat = kwargs.pop('logFormat', 
+        logFormat = kwargs.pop('logFormat',
                 '%(levelname)s:%(name)s (at %(asctime)s): %(message)s')
 
         configureLogging(level=logLevel, format=logFormat)

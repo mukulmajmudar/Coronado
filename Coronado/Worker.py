@@ -1,6 +1,5 @@
 import json
 import traceback
-import sys
 from datetime import timedelta
 from functools import partial
 from uuid import uuid4
@@ -10,7 +9,7 @@ import tornado.web
 from tornado import escape
 from tornado.ioloop import IOLoop
 
-from Concurrent import when
+from .Concurrent import when
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -43,8 +42,9 @@ class WorkerProxy(WorkerInterface):
         self._ioloop = ioloop is not None and ioloop or IOLoop.current()
 
 
+    # pylint: disable=too-many-arguments
     def request(self, tag, body, contentType='application/json',
-            contentEncoding='utf-8', expectResponse=False, 
+            contentEncoding='utf-8', expectResponse=False,
             timeout=timedelta(seconds=60), **kwargs):
         '''
         Send a request to a worker.
@@ -55,7 +55,7 @@ class WorkerProxy(WorkerInterface):
         body: Request body
         contentType: Content type of the body (default: 'application/json')
         contentEncoding: Encoding of the body (default: 'utf-8')
-        expectResponse: Whether to expect a response for this 
+        expectResponse: Whether to expect a response for this
           request (default: False)
         timeout: Timeout for the request (default: 60 seconds)
         '''
@@ -69,26 +69,27 @@ class WorkerProxy(WorkerInterface):
                 and contentType == 'application/json':
             body = json.dumps(body, encoding=contentEncoding)
 
-        # If we are expecting a response, generate a request ID 
+        # If we are expecting a response, generate a request ID
         requestId = expectResponse and uuid4().hex or None
 
         # Delegate actual sending to subclass
         requestResult = self._request(
-                id=requestId,
-                tag=tag, 
-                body=body, 
+                requestId=requestId,
+                tag=tag,
+                body=body,
                 contentType=contentType,
-                contentEncoding=contentEncoding, 
+                contentEncoding=contentEncoding,
                 **kwargs)
 
         self._ioloop.add_future(when(requestResult),
-                partial(self._onRequestSent, requestFuture, 
+                partial(self._onRequestSent, requestFuture,
                     expectResponse, requestId, timeout))
 
         return requestFuture
 
 
-    def _request(self, id, tag, body, contentType, contentEncoding,
+    # pylint: disable=too-many-arguments
+    def _request(self, requestId, tag, body, contentType, contentEncoding,
             **kwargs):
         '''
         Implementation method for subclasses to send work requests.
@@ -96,7 +97,8 @@ class WorkerProxy(WorkerInterface):
         raise NotImplementedError()
 
 
-    def _onRequestSent(self, requestFuture, expectResponse, requestId, 
+    # pylint: disable=too-many-arguments
+    def _onRequestSent(self, requestFuture, expectResponse, requestId,
             timeout, implFuture):
         '''
         When request is sent, store request ID, if set
@@ -104,13 +106,13 @@ class WorkerProxy(WorkerInterface):
         try:
             # Trap exceptions, if any
             implFuture.result()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             requestFuture.set_exception(e)
         else:
             logger.info('Worker request sent')
             # If we are expecting a response, we store our future for some time
             if expectResponse:
-                assert(requestId is not None)
+                assert requestId is not None
                 WorkerProxy._requestFutures[requestId] = requestFuture
 
                 # If our future is still stored after a while, remove it and
@@ -134,7 +136,7 @@ class WorkerProxy(WorkerInterface):
 
         This should be called by subclasses when they receive a response.
         '''
-        logger.info('Response received for request %s (partial): %s', 
+        logger.info('Response received for request %s (partial): %s',
                 requestId, body[0:100])
         try:
             requestFuture = WorkerProxy._requestFutures[requestId]
@@ -180,23 +182,26 @@ class Worker(WorkerInterface):
     Abstract base class for workers.
     '''
 
-    def __init__(self, handlers, type, ioloop=None):
+    def __init__(self, handlers, theType, ioloop=None):
         self._handlers = [tornado.web.URLSpec(*spec) for spec in handlers]
-        self._type = type
+        self._type = theType
         self._ioloop = ioloop is not None and ioloop or IOLoop.current()
 
 
+    # pylint: disable=too-many-arguments
     def respond(self, requestId, replyTo, body, contentType, contentEncoding):
         raise NotImplementedError()
 
 
-    def _onRequest(self, id, tag, body, contentType, contentEncoding, replyTo):
+    # pylint: disable=too-many-arguments
+    def _onRequest(self, requestId, tag, body, contentType, contentEncoding,
+            replyTo):
         '''
         Callback for handling messages, called by subclasses.
         '''
-        logger.info('Request received for tag %s (may be partial): %s', 
+        logger.info('Request received for tag %s (may be partial): %s',
                 tag, body[0:50])
-        logger.debug('Request ID: %s', id)
+        logger.debug('Request ID: %s', requestId)
         logger.debug('Request body (may be partial): %s', body[0:1000])
         try:
             # Convert body to dictionary from JSON if content type is JSON
@@ -205,33 +210,34 @@ class Worker(WorkerInterface):
 
             # Find handler for the given work tag
             handler, args, kwargs = self._findHandler(
-                    id, tag, body, contentType, contentEncoding)
+                    requestId, tag, body, contentType, contentEncoding)
             if handler is None:
                 raise RequestError('No handler found for tag %s' % (tag,))
 
             # Call the work handler
             result = handler(*args, **kwargs)
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             trace = traceback.format_exc()
             logging.error(trace)
 
             # If response expected, return an error response
-            if id is not None:
-                self.respond(id, replyTo, json.dumps({'error': str(e)}), 
+            if requestId is not None:
+                self.respond(requestId, replyTo, json.dumps({'error': str(e)}),
                         'application/json', 'utf-8')
         else:
             # If no request ID, don't do anything
-            if id is None:
+            if requestId is None:
                 return
 
             # Respond when the worker operation is complete
-            self._ioloop.add_future(when(result), 
-                    partial(self._respond, id, replyTo))
+            self._ioloop.add_future(when(result),
+                    partial(self._respond, requestId, replyTo))
 
 
-    def _findHandler(self, id, tag, body, contentType, contentEncoding):
-        # Find handler that matches the given tag. This code is mostly copied 
+    # pylint: disable=too-many-arguments
+    def _findHandler(self, requestId, tag, body, contentType, contentEncoding):
+        # Find handler that matches the given tag. This code is mostly copied
         # from Tornado v3.2's URL spec matching in tornado.web.Application.
         handler = None
         args = []
@@ -240,7 +246,7 @@ class Worker(WorkerInterface):
             match = spec.regex.match(tag)
             if match:
                 handler = spec.handler_class(
-                    WorkRequest(id, tag, body, contentType, 
+                    WorkRequest(requestId, tag, body, contentType,
                         contentEncoding), **spec.kwargs)
                 if spec.regex.groups:
                     # None-safe wrapper around url_unescape to handle
@@ -270,7 +276,7 @@ class Worker(WorkerInterface):
     def _respond(self, requestId, replyTo, resultFuture):
         try:
             result = resultFuture.result()
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             trace = traceback.format_exc()
             logging.error(trace)
 
@@ -287,14 +293,14 @@ class Worker(WorkerInterface):
                 result, contentType, contentEncoding = result
             else:
                 # Other return values not supported
-                logging.warning('Result value of type %s not supported', 
+                logging.warning('Result value of type %s not supported',
                         str(type(result)))
                 self.respond(requestId, replyTo, json.dumps(
                     dict(error='Worker error: unsupported result type')),
                     'application/json', 'utf-8')
                 return
 
-            self.respond(requestId, replyTo, result, contentType, 
+            self.respond(requestId, replyTo, result, contentType,
                     contentEncoding)
 
 
@@ -313,8 +319,9 @@ class WorkRequest(object):
     contentEncoding = None
 
 
-    def __init__(self, id, tag, body, contentType, contentEncoding):
-        self.id = id
+    # pylint: disable=too-many-arguments
+    def __init__(self, requestId, tag, body, contentType, contentEncoding):
+        self.id = requestId
         self.tag = tag
         self.body = body
         self.contentType = contentType
@@ -336,7 +343,7 @@ class WorkHandler(object):
     def __init__(self, request, **kwargs):
         self.request = request
 
-        # FIXME: The rest of this constructor is copied from 
+        # FIXME: The rest of this constructor is copied from
         # Coronado RequestHandler's initialize() method. Find a way to
         # avoid code duplication
 
@@ -368,7 +375,7 @@ class WorkHandler(object):
         self.database = self._database = self._context['database']
         self.httpClient = self._httpClient = self._context['httpClient']
 
-        # Store public and non-public context attributes as self's attributes 
+        # Store public and non-public context attributes as self's attributes
         # for ease of access in request handlers
         try:
             for key in self._context['flatten']['public']:
@@ -384,11 +391,11 @@ class WorkHandler(object):
 
     def __call__(self):
         '''
-        Execution method for the worker. 
-        
+        Execution method for the worker.
+
         Implement this with your own domain logic. Any return value from
-        this method will be sent back to the requestor, but only if it is 
-        expecting a response. If the operation this method performs is 
+        this method will be sent back to the requestor, but only if it is
+        expecting a response. If the operation this method performs is
         asynchronous, return a future.
         '''
         raise NotImplementedError()

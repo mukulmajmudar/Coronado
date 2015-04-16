@@ -1,4 +1,3 @@
-from contextlib import closing
 import logging
 from functools import wraps
 
@@ -61,18 +60,19 @@ class Client(object):
 
 
     @connected
-    def declareExchange(self, name, type):
+    def declareExchange(self, name, exchangeType):
         declareFuture = tornado.concurrent.Future()
-        def onExchangeDeclared(frame):
-            logger.info('Declared RabbitMQ exchange %s of type %s', 
-                    name, type)
+        def onExchangeDeclared(frame):  # pylint: disable=unused-argument
+            logger.info('Declared RabbitMQ exchange %s of type %s',
+                    name, exchangeType)
+            declareFuture.set_result(None)
 
-        logger.info('Declaring RabbitMQ exchange %s of type %s', 
-                name, type)
+        logger.info('Declaring RabbitMQ exchange %s of type %s',
+                name, exchangeType)
         self._channel.exchange_declare(
                 callback=onExchangeDeclared,
                 exchange=name,
-                exchange_type=type,
+                exchange_type=exchangeType,
                 durable=True)
 
         return declareFuture
@@ -82,7 +82,7 @@ class Client(object):
     def declareQueue(self, name):
         declareFuture = tornado.concurrent.Future()
 
-        def onQueueDeclared(methodFrame):
+        def onQueueDeclared(methodFrame):   # pylint: disable=unused-argument
             logger.info('Declared RabbitMQ queue %s', name)
             declareFuture.set_result(None)
 
@@ -103,8 +103,8 @@ class Client(object):
     def bindQueue(self, queueName, exchangeName, key):
         bindFuture = tornado.concurrent.Future()
 
-        def onQueueBound(frame):
-            logger.info('Bound queue %s to exchange %s', 
+        def onQueueBound(frame):    # pylint: disable=unused-argument
+            logger.info('Bound queue %s to exchange %s',
                     queueName, exchangeName)
             bindFuture.set_result(None)
 
@@ -125,9 +125,9 @@ class Client(object):
         # Make connection
         self._connectFuture = tornado.concurrent.Future()
         params = pika.ConnectionParameters(host=self._host, port=self._port)
-        self._connection = pika.adapters.TornadoConnection(params, 
-                on_open_callback=self._onConnected, 
-                on_open_error_callback=self._onConnectError, 
+        self._connection = TornadoConnection(params,
+                on_open_callback=self._onConnected,
+                on_open_error_callback=self._onConnectError,
                 on_close_callback=self._onConnectionClosed,
                 custom_ioloop=self._ioloop)
 
@@ -143,7 +143,8 @@ class Client(object):
 
 
     @connected
-    def publish(self, exchangeName, routingKey, body, 
+    # pylint: disable=too-many-arguments
+    def publish(self, exchangeName, routingKey, body,
             contentType, contentEncoding):
         # Define properties
         properties = BasicProperties(
@@ -152,15 +153,15 @@ class Client(object):
                 delivery_mode=2)
 
         # Publish to RabbitMQ server
-        self._channel.basic_publish(exchange=exchangeName, 
-                routing_key=routingKey, body=body, 
+        self._channel.basic_publish(exchange=exchangeName,
+                routing_key=routingKey, body=body,
                 properties=properties)
 
 
     @connected
     def startConsuming(self, queueName):
         # Add on-cancel callback
-        def onCancel(frame):
+        def onCancel(frame):    # pylint: disable=unused-argument
             self._channel.close()
         self._channel.add_on_cancel_callback(onCancel)
 
@@ -175,7 +176,7 @@ class Client(object):
     def stopConsuming(self, consumerTag):
         logger.info('Stopping RabbitMQ consumer')
         stopFuture = tornado.concurrent.Future()
-        def onCanceled(unused):
+        def onCanceled(unused): # pylint: disable=unused-argument
             logger.info('Canceled RabbitMQ consumer')
             stopFuture.set_result(None)
         self._channel.basic_cancel(onCanceled, consumerTag)
@@ -192,6 +193,7 @@ class Client(object):
         self._connectFuture = None
 
 
+    # pylint: disable=unused-argument
     def _onConnectionClosed(self, connection, replyCode, replyText):
         logger.info('RabbitMQ server connection closed')
         self._connected = False
@@ -209,6 +211,7 @@ class Client(object):
         self._connectFuture = None
 
 
+    # pylint: disable=unused-argument
     def _onChannelClosed(self, channel, replyCode, replyText):
         self._connected = False
         logger.info('RabbitMQ channel closed')

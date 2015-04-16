@@ -20,12 +20,15 @@ class Config(dict):
             'errorEmailRecipient',
             'errorEmailSubject',
             'allowedCORSOrigins',
+            'allowedWSOrigins',
             'worker',
             'emailWorkTag',
             'eventManager'
         ] + keys
         for key in keys:
             self[key] = getattr(self, '_get' + key[0].upper() + key[1:])()
+
+        super(Config, self).__init__()
 
 
     def _getAppName(self):
@@ -166,7 +169,14 @@ class Config(dict):
 
     def _getAllowedCORSOrigins(self):
         '''
-        List of origins allowed to access this server
+        List of origins allowed to access this server.
+        '''
+        return []
+
+
+    def _getAllowedWSOrigins(self):
+        '''
+        List of origins allowed to access this server using WebSocket protocol.
         '''
         return []
 

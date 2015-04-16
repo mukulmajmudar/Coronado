@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 class WorkerProxy(BaseWorkerProxy):
 
-    def __init__(self, host, port, requestQueueName, responseQueueName, 
+    # pylint: disable=too-many-arguments
+    def __init__(self, host, port, requestQueueName, responseQueueName,
             ioloop=None, shutdownDelay=10.0):
         # Call parent
         super(WorkerProxy, self).__init__(ioloop)
@@ -68,25 +69,25 @@ class WorkerProxy(BaseWorkerProxy):
         return future
 
 
-    def _request(self, id, tag, body, contentType, contentEncoding):
+    def _request(self, requestId, tag, body, contentType, contentEncoding):
         '''
         Publish a request to a worker.
         '''
 
         return self._client.publish(
                 queueName=self._requestQueueName,
-                type=tag,
+                messageType=tag,
                 body=body,
                 contentType=contentType,
                 contentEncoding=contentEncoding,
-                correlationId=id,
+                correlationId=requestId,
                 persistent=True,
                 replyTo=self._responseQueueName)
 
 
     def _onMessage(self, properties, body):
         # Pass to parent
-        self._onResponse(properties.correlation_id, body, 
+        self._onResponse(properties.correlation_id, body,
                 properties.content_type, properties.content_encoding)
 
 
@@ -98,6 +99,7 @@ class WorkerProxy(BaseWorkerProxy):
 
 class Worker(BaseWorker):
 
+    # pylint: disable=too-many-arguments
     def __init__(self, handlers, host, port, requestQueueName,
             ioloop=None, shutdownDelay=10.0, **kwargs):
         # Call parent
@@ -146,13 +148,14 @@ class Worker(BaseWorker):
         return future
 
 
+    # pylint: disable=too-many-arguments
     def respond(self, requestId, replyTo, body, contentType, contentEncoding):
         '''
-        Publish a message to the response queue. 
+        Publish a message to the response queue.
         '''
         return self._client.publish(
                 queueName=replyTo,
-                type=None,
+                messageType=None,
                 body=body,
                 contentType=contentType,
                 contentEncoding=contentEncoding,
@@ -163,9 +166,9 @@ class Worker(BaseWorker):
     def _onMessage(self, properties, body):
         # Pass to parent
         self._onRequest(
-                id=properties.correlation_id, 
-                tag=properties.type, 
-                body=body, 
+                requestId=properties.correlation_id,
+                tag=properties.type,
+                body=body,
                 contentType=properties.content_type,
                 contentEncoding=properties.content_encoding,
                 replyTo=properties.reply_to)

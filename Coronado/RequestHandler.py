@@ -1,4 +1,3 @@
-import os
 from cStringIO import StringIO
 import traceback
 import json
@@ -47,7 +46,7 @@ class RequestHandler(tornado.web.RequestHandler):
         self.database = self._database = self._context['database']
         self.httpClient = self._httpClient = self._context['httpClient']
 
-        # Store public and non-public context attributes as self's attributes 
+        # Store public and non-public context attributes as self's attributes
         # for ease of access in request handlers
         try:
             for key in self._context['flatten']['public']:
@@ -72,36 +71,36 @@ class RequestHandler(tornado.web.RequestHandler):
         if 'Origin' in self.request.headers \
                 and self.request.headers['Origin'] \
                 in self._context['allowedCORSOrigins']:
-            self.set_header('Access-Control-Allow-Origin', 
+            self.set_header('Access-Control-Allow-Origin',
                     self.request.headers['Origin'])
-            self.set_header('Access-Control-Allow-Methods', 
+            self.set_header('Access-Control-Allow-Methods',
                     'GET, POST, PUT, DELETE, OPTIONS')
             self.set_header('Access-Control-Allow-Credentials', 'true')
             if 'Access-Control-Request-Headers' in self.request.headers:
-                self.set_header('Access-Control-Allow-Headers', 
+                self.set_header('Access-Control-Allow-Headers',
                     self.request.headers['Access-Control-Request-Headers'])
 
             if 'authTokenHeaderName' in self._context:
-                self.set_header('Access-Control-Expose-Headers', 
+                self.set_header('Access-Control-Expose-Headers',
                         self._context['authTokenHeaderName'])
 
 
-    def write_error(self, status, **kwargs):
+    def write_error(self, status, **kwargs):    # pylint: disable=unused-argument
         # Allow cross-origin access to everyone
         if 'Origin' in self.request.headers \
                 and self.request.headers['Origin'] \
                 in self._context['allowedCORSOrigins']:
-            self.set_header('Access-Control-Allow-Origin', 
+            self.set_header('Access-Control-Allow-Origin',
                     self.request.headers['Origin'])
-            self.set_header('Access-Control-Allow-Methods', 
+            self.set_header('Access-Control-Allow-Methods',
                     'GET, POST, PUT, DELETE, OPTIONS')
             self.set_header('Access-Control-Allow-Credentials', 'true')
             if 'Access-Control-Request-Headers' in self.request.headers:
-                self.set_header('Access-Control-Allow-Headers', 
+                self.set_header('Access-Control-Allow-Headers',
                         self.request.headers['Access-Control-Request-Headers'])
 
             if 'authTokenHeaderName' in self._context:
-                self.set_header('Access-Control-Expose-Headers', 
+                self.set_header('Access-Control-Expose-Headers',
                         self._context['authTokenHeaderName'])
 
 
@@ -123,7 +122,7 @@ class RequestHandler(tornado.web.RequestHandler):
         tbString = tbStringIO.getvalue()
 
         # Send email to the configured recipient
-        self._worker.request(self._context['emailWorkTag'], 
+        self._worker.request(self._context['emailWorkTag'],
         {
             'subject': self._context['errorEmailSubject'],
             'recipient': self._context['errorEmailRecipient'],
@@ -142,7 +141,7 @@ class RequestHandler(tornado.web.RequestHandler):
             raise tornado.web.HTTPError(415)
         try:
             return json.loads(self.request.body)
-        except ValueError as e:
+        except ValueError:
             raise tornado.web.HTTPError(415)
 
 
@@ -167,7 +166,7 @@ def withJsonBody(attrName='jsonBody', charset='UTF-8'):
                 raise tornado.web.HTTPError(415)
             try:
                 setattr(self, attrName, json.loads(self.request.body))
-            except ValueError as e:
+            except ValueError:
                 raise tornado.web.HTTPError(415)
             else:
                 func(self, *args, **kwargs)
@@ -181,7 +180,9 @@ def finish(func):
     @wraps(func)
     def wrapper(self, *args, **kwargs):
         try:
-            func()
+            func(*args, **kwargs)
         finally:
             if not self._finished:
                 self.finish()
+
+    return wrapper

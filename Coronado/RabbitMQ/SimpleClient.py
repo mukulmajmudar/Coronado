@@ -19,7 +19,7 @@ class SimpleClient(object):
     A simplified RabbitMQ client.
 
     This client always uses the default exchange and queue-name-based bindings,
-    useful for simple cases where RabbitMQ's complete messaging model is not 
+    useful for simple cases where RabbitMQ's complete messaging model is not
     required (e.g. work queue implementation).
     '''
 
@@ -37,11 +37,12 @@ class SimpleClient(object):
         connection = pika.BlockingConnection(params)
         with closing(connection.channel()) as channel:
             # Close connection once channel is closed
+            # pylint: disable=unused-argument
             def closeConnection(channel, replyCode, replyText):
                 connection.close()
             channel.add_on_close_callback(closeConnection)
 
-            # Declare durable queues; we will use the 
+            # Declare durable queues; we will use the
             # default exchange for simple tag-based routing
             for queueName in queueNames:
                 logger.info('Declaring RabbitMQ queue %s', queueName)
@@ -49,12 +50,13 @@ class SimpleClient(object):
                 logger.info('Declared RabbitMQ queue %s', queueName)
 
 
+    # pylint: disable=too-many-arguments
     def declare(self, queueName, passive=False, durable=False,
             exclusive=False, auto_delete=False, nowait=False,
             arguments=None):
         declareFuture = tornado.concurrent.Future()
 
-        def onQueueDeclared(methodFrame):
+        def onQueueDeclared(methodFrame):   # pylint: disable=unused-argument
             logger.info('Declared RabbitMQ queue %s', queueName)
             declareFuture.set_result(None)
 
@@ -74,15 +76,15 @@ class SimpleClient(object):
             try:
                 # Trap connection exceptions if any
                 connectFuture.result()
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 declareFuture.set_exception(e)
             else:
-                assert(self._connected)
-                
+                assert self._connected
+
                 logger.info('Declaring RabbitMQ queue %s', queueName)
                 self._channel.queue_declare(onQueueDeclared, queueName,
                         passive=passive, durable=durable, exclusive=exclusive,
-                        auto_delete=auto_delete, nowait=nowait, 
+                        auto_delete=auto_delete, nowait=nowait,
                         arguments=arguments)
 
         self._ioloop.add_future(self.connect(), onConnected)
@@ -98,9 +100,9 @@ class SimpleClient(object):
         # Make connection
         self._connectFuture = tornado.concurrent.Future()
         params = pika.ConnectionParameters(host=self._host, port=self._port)
-        self._connection = pika.adapters.TornadoConnection(params, 
-                on_open_callback=self._onConnected, 
-                on_open_error_callback=self._onConnectError, 
+        self._connection = TornadoConnection(params,
+                on_open_callback=self._onConnected,
+                on_open_error_callback=self._onConnectError,
                 on_close_callback=self._onConnectionClosed,
                 custom_ioloop=self._ioloop)
 
@@ -115,16 +117,16 @@ class SimpleClient(object):
         return self._disconnectFuture
 
 
-    def publish(self, queueName, type, body, contentType, 
+    def publish(self, queueName, messageType, body, contentType,
             contentEncoding, correlationId, persistent, replyTo=None):
         # If already connected to RabbitMQ server, publish immediately
         if self._connected:
             self._publish(
-                    queueName=queueName, 
-                    type=type, 
-                    body=body, 
-                    contentType=contentType, 
-                    contentEncoding=contentEncoding, 
+                    queueName=queueName,
+                    messageType=messageType,
+                    body=body,
+                    contentType=contentType,
+                    contentEncoding=contentEncoding,
                     correlationId=correlationId,
                     persistent=persistent,
                     replyTo=replyTo)
@@ -140,18 +142,18 @@ class SimpleClient(object):
             try:
                 # Trap connection exceptions, if any
                 connectFuture.result()
-            except Exception as e:
+            except Exception as e:  # pylint: disable=broad-except
                 queueFuture.set_exception(e)
             else:
-                assert(self._connected)
+                assert self._connected
 
                 # Connected, so publish
                 self._publish(
                         queueName=queueName,
-                        type=type, 
+                        messageType=messageType,
                         body=body,
-                        contentType=contentType, 
-                        contentEncoding=contentEncoding, 
+                        contentType=contentType,
+                        contentEncoding=contentEncoding,
                         correlationId=correlationId,
                         persistent=persistent,
                         replyTo=replyTo)
@@ -168,10 +170,10 @@ class SimpleClient(object):
         # Connect, then start consuming
         def onConnected(connectFuture):
             connectFuture.result()
-            assert(self._connected)
+            assert self._connected
 
             # Add on-cancel callback
-            def onCancel(frame):
+            def onCancel(frame):    # pylint: disable=unused-argument
                 self._channel.close()
             self._channel.add_on_cancel_callback(onCancel)
 
@@ -186,28 +188,28 @@ class SimpleClient(object):
     def stopConsuming(self):
         logger.info('Stopping RabbitMQ consumer')
         stopFuture = tornado.concurrent.Future()
-        def onCanceled(unused):
+        def onCanceled(unused): # pylint: disable=unused-argument
             logger.info('Canceled RabbitMQ consumer')
             stopFuture.set_result(None)
         self._channel.basic_cancel(onCanceled, self._consumerTag)
         return stopFuture
 
 
-    def _publish(self, queueName, type, body, contentType, 
+    def _publish(self, queueName, messageType, body, contentType,
             contentEncoding, correlationId, persistent, replyTo):
 
         # Define properties
         properties = BasicProperties(
                 content_type=contentType,
                 content_encoding=contentEncoding,
-                type=type,
+                type=messageType,
                 delivery_mode=persistent and 2 or None,
                 correlation_id=correlationId,
                 reply_to=replyTo)
 
         # Publish to RabbitMQ server
-        self._channel.basic_publish(exchange='', 
-                routing_key=queueName, body=body, 
+        self._channel.basic_publish(exchange='',
+                routing_key=queueName, body=body,
                 properties=properties)
 
 
@@ -221,6 +223,7 @@ class SimpleClient(object):
         self._connectFuture = None
 
 
+    # pylint: disable=unused-argument
     def _onConnectionClosed(self, connection, replyCode, replyText):
         logger.info('RabbitMQ server connection closed')
         self._connected = False
@@ -238,12 +241,14 @@ class SimpleClient(object):
         self._connectFuture = None
 
 
+    # pylint: disable=unused-argument
     def _onChannelClosed(self, channel, replyCode, replyText):
         self._connected = False
         logger.info('RabbitMQ channel closed')
         self._connection.close()
 
 
+    # pylint: disable=unused-argument
     def _onMessage(self, channel, basicDeliver, properties, body):
         logger.info('Message received (may be partial): %s', body[0:50])
         logger.debug('Message body (may be partial): %s', body[0:1000])

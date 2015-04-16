@@ -1,5 +1,4 @@
 import json
-import pdb
 
 from ..EventManager import EventManager as BaseEventManager
 from ..Concurrent import when, transform
@@ -11,6 +10,7 @@ class EventManager(BaseEventManager):
     client = None
     triggerCapable = None
 
+    # pylint: disable=too-many-arguments
     def __init__(self, host, port, name, trigger=True, ioloop=None):
         # Call parent
         super(EventManager, self).__init__(name, ioloop)
@@ -74,7 +74,7 @@ class EventManager(BaseEventManager):
 
             return consumerTag
 
-        return transform(when(declareXFuture, declareQFuture), 
+        return transform(when(declareXFuture, declareQFuture),
                 onDeclared, ioloop=self.ioloop)
 
 
@@ -94,6 +94,7 @@ class EventManager(BaseEventManager):
         return self.client.stopConsuming(listenerId)
 
 
+    # pylint: disable=unused-argument
     def _onMessage(self, consumerTag, properties, body):
         # Assume body is a JSON string
         kwargs = json.loads(body)

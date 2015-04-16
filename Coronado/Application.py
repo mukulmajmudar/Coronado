@@ -1,5 +1,4 @@
 import sys
-import functools
 from contextlib import closing
 import argparse
 import json
@@ -13,16 +12,14 @@ import tornado.httpclient
 import MySQLdb
 from MySQLdb.cursors import DictCursor
 
-import Coronado
-import Coronado.Testing
-from . import Email, RabbitMQ, EventManager
-from .Concurrent import when
+from . import RabbitMQ, EventManager, Testing
+from .Email import SendEmail
 
 logger = logging.getLogger(__name__)
 
 workerClasses = \
 {
-    'RabbitMQ': 
+    'RabbitMQ':
     {
         'worker': RabbitMQ.Worker,
         'proxy': RabbitMQ.WorkerProxy
@@ -66,7 +63,7 @@ class Application(object):
         # Initialize context to be a copy of the configuration
         self.context = self.config.copy()
 
-        # Deep copy worker and event manager params (copy.deepcopy doesn't 
+        # Deep copy worker and event manager params (copy.deepcopy doesn't
         # work presumably because config contains classes)
         if self.context.get('worker'):
             self.context['worker'] = self.context['worker'].copy()
@@ -82,12 +79,11 @@ class Application(object):
         if 'database' not in self.context:
             self.context['database'] = self._getDbConnection()
         if 'httpClient' not in self.context:
-            '''
             # Configure AsyncHTTPClient to use cURL implementation
-            tornado.httpclient.AsyncHTTPClient.configure(
-                    "tornado.curl_httpclient.CurlAsyncHTTPClient",
-                    max_clients=5000)
-            '''
+            #tornado.httpclient.AsyncHTTPClient.configure(
+            #        "tornado.curl_httpclient.CurlAsyncHTTPClient",
+            #        max_clients=5000)
+
             self.context['httpClient'] = tornado.httpclient.AsyncHTTPClient(
                     self.context['ioloop'])
 
@@ -114,7 +110,7 @@ class Application(object):
             for url, handlerClass in versionUrls.iteritems():
                 urls['/v' + str(apiVersion) + url] = handlerClass
         logger.debug('URL mappings: %s', str(urls))
-        urlHandlers = [mapping + (self.context,) 
+        urlHandlers = [mapping + (self.context,)
                 for mapping in zip(urls.keys(), urls.values())]
 
         self.tornadoApp = tornado.web.Application(urlHandlers)
@@ -142,10 +138,10 @@ class Application(object):
             # If an email work tag is configured, add an email work handler
             emailWorkTag = self.context.get('emailWorkTag')
             if emailWorkTag is not None:
-                handlers[emailWorkTag] = Coronado.Email.SendEmail
+                handlers[emailWorkTag] = SendEmail
 
             # Convert to Tornado-style tuple
-            workHandlers = [mapping + (self.context,) 
+            workHandlers = [mapping + (self.context,)
                     for mapping in zip(handlers.keys(), handlers.values())]
 
             # Create a worker
@@ -169,7 +165,7 @@ class Application(object):
         if not eventManager:
             return
 
-        # Create an event manager 
+        # Create an event manager
         eventManagerType = eventManager.pop('type')
         eventManager = self.context['eventManager'] = \
                 EventManager.make(eventManagerType, **eventManager)
@@ -238,40 +234,43 @@ class Application(object):
             # Stop accepting new connections
             self.httpServer.stop()
 
-            # Stop worker proxy
-            logger.info('Stopping worker proxy')
+            if self.context['worker'] is not None:
+                # Stop worker proxy
+                logger.info('Stopping worker proxy')
         else:
-            logger.info('Stopping worker')
+            if self.context['worker'] is not None:
+                logger.info('Stopping worker')
 
-        workerStopFuture = self.context['worker'].stop()
+        if self.context['worker'] is not None:
+            workerStopFuture = self.context['worker'].stop()
 
-        def onWorkerStopped(workerStopFuture):
-            try:
-                workerStopFuture.result()
-            finally:
-                # Stop event loop after a delay
-                delaySeconds = self.context.get('shutdownDelay', 5.0)
+            def onWorkerStopped(workerStopFuture):
+                try:
+                    workerStopFuture.result()
+                finally:
+                    # Stop event loop after a delay
+                    delaySeconds = self.context.get('shutdownDelay', 5.0)
 
-                label = self._workerMode and 'Worker' or 'Application'
+                    label = self._workerMode and 'Worker' or 'Application'
 
-                def stop():
-                    self.stopEventLoop()
-                    self._destroyed = True
-                    logger.info('%s has been shut down.', label)
+                    def stop():
+                        self.stopEventLoop()
+                        self._destroyed = True
+                        logger.info('%s has been shut down.', label)
 
-                logger.info('%s will be shut down in %d seconds', label,
-                        delaySeconds)
-                self.context['ioloop'].add_timeout(
-                        time.time() + delaySeconds, stop)
+                    logger.info('%s will be shut down in %d seconds', label,
+                            delaySeconds)
+                    self.context['ioloop'].add_timeout(
+                            time.time() + delaySeconds, stop)
 
-        self.context['ioloop'].add_future(workerStopFuture, onWorkerStopped)
+            self.context['ioloop'].add_future(workerStopFuture, onWorkerStopped)
 
 
     def _getDbConnection(self):
         # Connect to MySQL
         mysqlArgs = self.context['mysql']
-        database = MySQLdb.connect(host=mysqlArgs['host'], 
-                user=mysqlArgs['user'], passwd=mysqlArgs['password'], 
+        database = MySQLdb.connect(host=mysqlArgs['host'],
+                user=mysqlArgs['user'], passwd=mysqlArgs['password'],
                 db=mysqlArgs['dbName'], use_unicode=True, charset='utf8',
                 cursorclass=DictCursor)
 
@@ -323,18 +322,19 @@ class AppStarter(object):
         try:
             # Parse command-line args
             parser = argparse.ArgumentParser(description='Server starter')
-            parser.add_argument('-t', '--test', action='store_true', 
+            parser.add_argument('-t', '--test', action='store_true',
                     help='Whether to start the application in test mode')
             parser.add_argument('-f', '--fixture', type=file,
                     help='Fixture file path, only applicable in test mode')
             clArgs = parser.parse_args()
-            
+
             if clArgs.test:
-                testsMod = __import__(self._config['testPkg'].__name__ + '.config')
+                testsMod = __import__(self._config['testPkg'].__name__ +
+                        '.config')
                 config = testsMod.config.config
 
                 # Setup a testing scaffold
-                scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
+                scaffold = Testing.Scaffold(config, config['appClass'],
                         *args, **kwargs)
                 scaffold.setup()
                 app = scaffold.app
@@ -342,7 +342,7 @@ class AppStarter(object):
                 # Load test fixture if any
                 if clArgs.fixture is not None:
                     fixture = json.load(clArgs.fixture)
-                    Coronado.Testing.installFixture(
+                    Testing.installFixture(
                             app.context['database'], fixture)
 
                 # Start listening for requests
@@ -368,7 +368,7 @@ class AppStarter(object):
                 app.startEventLoop()
         except KeyboardInterrupt:
             pass
-        except Exception as e:
+        except Exception:  # pylint: disable=broad-except
             sys.stderr.write(traceback.format_exc() + '\n')
         finally:
             if app is not None:

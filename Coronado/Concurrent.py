@@ -29,7 +29,7 @@ def when(*args, **kwargs):
     index = 0
     for maybeFuture in args:
         if isinstance(maybeFuture, tornado.concurrent.Future):
-            ioloop.add_future(maybeFuture, 
+            ioloop.add_future(maybeFuture,
                     functools.partial(onFutureDone, index))
         elif isinstance(maybeFuture, Exception):
             # Make a future with the exception set to the argument
@@ -60,7 +60,7 @@ def transform(future, callback, ioloop=None):
     def onFutureDone(future):
         try:
             transformedValue = callback(future)
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-except
             transformedValue = e
         nextFuture = when(transformedValue)
         tornado.concurrent.chain_future(nextFuture, newFuture)
