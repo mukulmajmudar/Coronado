@@ -14,11 +14,29 @@ from .Concurrent import when
 # Logger for this module
 logger = logging.getLogger(__name__)
 
-class RequestError(Exception):
-    pass
+class WorkerException(Exception):
+    tag = None
+    keys = None
+
+    def __init__(self, message='', tag='', **kwargs):
+        super(WorkerException, self).__init__(message)
+        self.tag = tag
+        self.keys = kwargs.keys()
+        for key, value in kwargs.iteritems():
+            if key == 'tag':
+                continue
+            setattr(self, key, value)
 
 
-class ResponseTimeout(RequestError):
+    def getData(self):
+        data = {}
+        for key in self.keys:
+            data[key] = getattr(self, key)
+
+        return data
+
+
+class ResponseTimeout(WorkerException):
     pass
 
 
@@ -150,9 +168,10 @@ class WorkerProxy(WorkerInterface):
 
                 # Set exception if error returned
                 if isinstance(response, dict):
-                    error = response.get('error')
-                    if error:
-                        requestFuture.set_exception(RequestError(error))
+                    error = response.pop('error', None)
+                    if error is not None:
+                        requestFuture.set_exception(
+                                WorkerException(error, **response))
                     else:
                         # No error, so set result
                         requestFuture.set_result(response)
@@ -212,7 +231,7 @@ class Worker(WorkerInterface):
             handler, args, kwargs = self._findHandler(
                     requestId, tag, body, contentType, contentEncoding)
             if handler is None:
-                raise RequestError('No handler found for tag %s' % (tag,))
+                raise WorkerException('No handler found for tag %s' % (tag,))
 
             # Call the work handler
             result = handler(*args, **kwargs)
@@ -223,7 +242,12 @@ class Worker(WorkerInterface):
 
             # If response expected, return an error response
             if requestId is not None:
-                self.respond(requestId, replyTo, json.dumps({'error': str(e)}),
+                response = dict(error=str(e))
+                if isinstance(e, WorkerException):
+                    response['tag'] = e.tag
+                    response.update(e.getData())
+
+                self.respond(requestId, replyTo, json.dumps(response),
                         'application/json', 'utf-8')
         else:
             # If no request ID, don't do anything
@@ -280,7 +304,12 @@ class Worker(WorkerInterface):
             trace = traceback.format_exc()
             logging.error(trace)
 
-            self.respond(requestId, replyTo, json.dumps(dict(error=str(e))),
+            response = dict(error=str(e))
+            if isinstance(e, WorkerException):
+                response['tag'] = e.tag
+                response.update(e.getData())
+
+            self.respond(requestId, replyTo, json.dumps(response),
                     'application/json', 'utf-8')
         else:
             # Respond with the worker's result

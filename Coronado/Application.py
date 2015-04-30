@@ -157,6 +157,7 @@ class Application(object):
         self.addToContextFlatten(
         {
             'non-public': ['worker'],
+            'public': ['worker']
         })
 
 
