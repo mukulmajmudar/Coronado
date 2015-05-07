@@ -315,7 +315,10 @@ class Worker(WorkerInterface):
             # Respond with the worker's result
             if result is None or isinstance(result, dict) \
                     or isinstance(result, list):
-                result = json.dumps(result, encoding='utf-8')
+                try:
+                    result = json.dumps(result, encoding='utf-8')
+                except Exception as e:  # pylint: disable=broad-except
+                    result = json.dumps(dict(error=str(e)))
                 contentType = 'application/json'
                 contentEncoding = 'utf-8'
             elif isinstance(result, tuple):
