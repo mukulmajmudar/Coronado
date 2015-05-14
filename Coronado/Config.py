@@ -186,7 +186,7 @@ class Config(dict):
 
 
     def _getEmailWorkTag(self):
-        return '/sendEmail'
+        return 'sendEmail'
 
 
     def _getEventManager(self):

@@ -90,14 +90,14 @@ class Application(object):
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
 
+        # Setup eventManager if configured
+        self.setupEventManager()
+
         # Call API-specific setup functions
         self._callApiSpecific('setup', self, self.context)
 
         # Setup worker if configured
         self.setupWorker()
-
-        # Setup eventManager if configured
-        self.setupEventManager()
 
         # Define url handlers
         urls = {}
