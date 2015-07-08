@@ -58,7 +58,8 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
 
     def check_origin(self, origin):
-        return origin in self.context['allowedWSOrigins']
+        allowedWSOrigins = self.context['allowedWSOrigins']
+        return allowedWSOrigins == 'any' or origin in allowedWSOrigins
 
 
     def options(self, *args, **kwargs):

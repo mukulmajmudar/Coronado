@@ -9,12 +9,15 @@ import json
 import tempfile
 from contextlib import closing
 import argparse
+import logging
 
 import MySQLdb
 import tornado.testing
 
 from .HttpUtil import parseContentType
 from .Exceptions import IllegalArgument
+
+logger = logging.getLogger(__name__)
 
 class TestEnvironmentError(Exception):
     pass
@@ -215,6 +218,7 @@ def _installFixture(database, fixture, ignoreConflicts):
 
     # Install fixture into database
     for tableName in fixture['tableOrder']:
+        logger.info('Installing table %s', tableName)
         for row in fixture[tableName]:
             query = 'INSERT INTO ' + tableName + ' (' \
                     + ','.join(row.keys()) \
@@ -224,6 +228,7 @@ def _installFixture(database, fixture, ignoreConflicts):
                     cursor.execute(query, tuple(row.values()))
                 except MySQLdb.IntegrityError:
                     if ignoreConflicts:
+                        logger.info('Ignoring conflict in table %s', tableName)
                         continue
                     else:
                         raise

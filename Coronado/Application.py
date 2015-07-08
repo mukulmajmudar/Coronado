@@ -146,10 +146,12 @@ class Application(object):
 
             # Create a worker
             worker = self.context['worker'] = classes['worker'](
-                    handlers=workHandlers, **worker)
+                    handlers=workHandlers,
+                    shutdownDelay=self.context['shutdownDelay'], **worker)
         else:
             # Create a worker proxy
-            worker = self.context['worker'] = classes['proxy'](**worker)
+            worker = self.context['worker'] = classes['proxy'](
+                    shutdownDelay=self.context['shutdownDelay'], **worker)
 
         worker.setup()
         self.context['ioloop'].run_sync(worker.start)
@@ -250,9 +252,10 @@ class Application(object):
                     workerStopFuture.result()
                 finally:
                     # Stop event loop after a delay
-                    delaySeconds = self.context.get('shutdownDelay', 5.0)
+                    delaySeconds = self.context['shutdownDelay']
 
-                    label = self._workerMode and 'Worker' or 'Application'
+                    label = self._workerMode and 'Worker application' \
+                            or 'Server application'
 
                     def stop():
                         self.stopEventLoop()

@@ -5,30 +5,69 @@ class Config(dict):
     def __init__(self, keys):
         keys = \
         [
-            'appName',
-            'appRoot',
-            'appPackage',
-            'appClass',
-            'testPkg',
-            'port',
-            'uri',
-            'mysql',
-            'smtp',
             'admin',
-            'apiVersions',
-            'sendEmailOnError',
-            'errorEmailRecipient',
-            'errorEmailSubject',
             'allowedCORSOrigins',
             'allowedWSOrigins',
-            'worker',
+            'apiVersions',
+            'appClass',
+            'appName',
+            'appPackage',
+            'appRoot',
+            'errorEmailRecipient',
+            'errorEmailSubject',
             'emailWorkTag',
-            'eventManager'
+            'eventManager',
+            'mysql',
+            'port',
+            'sendEmailOnError',
+            'shutdownDelay',
+            'smtp',
+            'testPkg',
+            'uri',
+            'worker',
         ] + keys
         for key in keys:
             self[key] = getattr(self, '_get' + key[0].upper() + key[1:])()
 
         super(Config, self).__init__()
+
+
+    def _getAdmin(self):
+        return \
+        {
+            'name': self._getAdminName(),
+            'email': self._getAdminEmail()
+        }
+
+
+    def _getAdminName(self):
+        return None
+
+
+    def _getAdminEmail(self):
+        return None
+
+
+    def _getAllowedCORSOrigins(self):
+        '''
+        List of origins allowed to access this server.
+        '''
+        return []
+
+
+    def _getAllowedWSOrigins(self):
+        '''
+        List of origins allowed to access this server using WebSocket protocol.
+        '''
+        return []
+
+
+    def _getApiVersions(self):
+        return ['1']
+
+
+    def _getAppClass(self):
+        return Application
 
 
     def _getAppName(self):
@@ -38,6 +77,10 @@ class Config(dict):
         return 'Coronado Application'
 
 
+    def _getAppPackage(self):
+        raise NotImplementedError()
+
+
     def _getAppRoot(self):
         '''
         Root directory of the Coronado application.
@@ -45,33 +88,20 @@ class Config(dict):
         raise NotImplementedError()
 
 
-    def _getAppPackage(self):
-        raise NotImplementedError()
+    def _getErrorEmailRecipient(self):
+        return self['admin']['email']
 
 
-    def _getAppClass(self):
-        return Application
+    def _getErrorEmailSubject(self):
+        return '[ERROR][%s] Server Error Occurred' % (self['appName'],)
 
 
-    def _getTestPkg(self):
-        '''
-        Package containing tests and test config.
-        '''
+    def _getEmailWorkTag(self):
+        return 'sendEmail'
+
+
+    def _getEventManager(self):
         return None
-
-
-    def _getPort(self):
-        '''
-        Port on which to listen for requests.
-        '''
-        raise NotImplementedError()
-
-
-    def _getUri(self):
-        '''
-        URI of this application.
-        '''
-        return 'http://127.0.0.1:%d' % (self['port'],)
 
 
     def _getMysql(self):
@@ -81,6 +111,7 @@ class Config(dict):
         return \
         {
             'host': self._getMysqlHost(),
+            'port': self._getMysqlPort(),
             'user': self._getMysqlUser(),
             'password': self._getMysqlPassword(),
             'dbName': self._getMysqlDbName(),
@@ -90,6 +121,10 @@ class Config(dict):
 
     def _getMysqlHost(self):
         raise NotImplementedError()
+
+
+    def _getMysqlPort(self):
+        return 3306
 
 
     def _getMysqlUser(self):
@@ -105,6 +140,29 @@ class Config(dict):
 
     def _getMySchemaFilePath(self):
         raise NotImplementedError()
+
+
+    def _getPort(self):
+        '''
+        Port on which to listen for requests.
+        '''
+        raise NotImplementedError()
+
+
+    def _getSendEmail(self):
+        '''
+        Return True to enable SMTP-based email sending.
+        '''
+        return False
+
+
+    def _getSendEmailOnError(self):
+        return True
+
+
+    def _getShutdownDelay(self):
+        return 5.0
+
 
     def _getSmtp(self):
         '''
@@ -135,59 +193,19 @@ class Config(dict):
         raise NotImplementedError()
 
 
-    def _getAdmin(self):
-        return \
-        {
-            'name': self._getAdminName(),
-            'email': self._getAdminEmail()
-        }
-
-
-    def _getAdminName(self):
-        raise NotImplementedError()
-
-
-    def _getAdminEmail(self):
-        raise NotImplementedError()
-
-
-    def _getApiVersions(self):
-        return ['1']
-
-
-    def _getSendEmailOnError(self):
-        return True
-
-
-    def _getErrorEmailRecipient(self):
-        return self['admin']['email']
-
-
-    def _getErrorEmailSubject(self):
-        return '[ERROR][%s] Server Error Occurred' % (self['appName'],)
-
-
-    def _getAllowedCORSOrigins(self):
+    def _getTestPkg(self):
         '''
-        List of origins allowed to access this server.
+        Package containing tests and test config.
         '''
-        return []
-
-
-    def _getAllowedWSOrigins(self):
-        '''
-        List of origins allowed to access this server using WebSocket protocol.
-        '''
-        return []
-
-
-    def _getWorker(self):
         return None
 
 
-    def _getEmailWorkTag(self):
-        return 'sendEmail'
+    def _getUri(self):
+        '''
+        URI of this application.
+        '''
+        return 'http://127.0.0.1:%d' % (self['port'],)
 
 
-    def _getEventManager(self):
+    def _getWorker(self):
         return None

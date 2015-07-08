@@ -28,8 +28,8 @@ class RequestHandler(tornado.web.RequestHandler):
         })
 
         # Update context with arguments
-        self._context.update(kwargs)
-        self._context.getNewDbConnection = kwargs.get('getNewDbConnection')
+        self.context.update(kwargs)
+        self.context.getNewDbConnection = kwargs.get('getNewDbConnection')
 
         # Validate context
         if self._context['sendEmailOnError']:
@@ -49,13 +49,13 @@ class RequestHandler(tornado.web.RequestHandler):
         # Store public and non-public context attributes as self's attributes
         # for ease of access in request handlers
         try:
-            for key in self._context['flatten']['public']:
-                setattr(self, key, self._context[key])
+            for key in self.context['flatten']['public']:
+                setattr(self, key, self.context[key])
         except KeyError:
             pass
         try:
-            for key in self._context['flatten']['non-public']:
-                setattr(self, '_' + key, self._context[key])
+            for key in self.context['flatten']['non-public']:
+                setattr(self, '_' + key, self.context[key])
         except KeyError:
             pass
 
@@ -64,13 +64,13 @@ class RequestHandler(tornado.web.RequestHandler):
         pass
 
 
-    def prepare(self):
-        super(RequestHandler, self).prepare()
-
+    def setCORSHeaders(self):
         # Manage cross-origin access
+        allowedCORSOrigins = self.context['allowedCORSOrigins']
         if 'Origin' in self.request.headers \
-                and self.request.headers['Origin'] \
-                in self._context['allowedCORSOrigins']:
+                and (allowedCORSOrigins == 'any'
+                        or self.request.headers['Origin'] in
+                        self.context['allowedCORSOrigins']):
             self.set_header('Access-Control-Allow-Origin',
                     self.request.headers['Origin'])
             self.set_header('Access-Control-Allow-Methods',
@@ -80,28 +80,18 @@ class RequestHandler(tornado.web.RequestHandler):
                 self.set_header('Access-Control-Allow-Headers',
                     self.request.headers['Access-Control-Request-Headers'])
 
-            if 'authTokenHeaderName' in self._context:
+            if 'authTokenHeaderName' in self.context:
                 self.set_header('Access-Control-Expose-Headers',
-                        self._context['authTokenHeaderName'])
+                        self.context['authTokenHeaderName'])
+
+
+    def prepare(self):
+        super(RequestHandler, self).prepare()
+        self.setCORSHeaders()
 
 
     def write_error(self, status, **kwargs):    # pylint: disable=unused-argument
-        # Allow cross-origin access to everyone
-        if 'Origin' in self.request.headers \
-                and self.request.headers['Origin'] \
-                in self._context['allowedCORSOrigins']:
-            self.set_header('Access-Control-Allow-Origin',
-                    self.request.headers['Origin'])
-            self.set_header('Access-Control-Allow-Methods',
-                    'GET, POST, PUT, DELETE, OPTIONS')
-            self.set_header('Access-Control-Allow-Credentials', 'true')
-            if 'Access-Control-Request-Headers' in self.request.headers:
-                self.set_header('Access-Control-Allow-Headers',
-                        self.request.headers['Access-Control-Request-Headers'])
-
-            if 'authTokenHeaderName' in self._context:
-                self.set_header('Access-Control-Expose-Headers',
-                        self._context['authTokenHeaderName'])
+        self.setCORSHeaders()
 
 
     def log_exception(self, typ, value, tb):
@@ -109,7 +99,7 @@ class RequestHandler(tornado.web.RequestHandler):
         super(RequestHandler, self).log_exception(typ, value, tb)
 
         # If not sending error emails, return
-        if not self._context.get('sendEmailOnError'):
+        if not self.context.get('sendEmailOnError'):
             return
 
         # Ignore if HTTPError < 500
@@ -122,10 +112,10 @@ class RequestHandler(tornado.web.RequestHandler):
         tbString = tbStringIO.getvalue()
 
         # Send email to the configured recipient
-        self._worker.request(self._context['emailWorkTag'],
+        self._worker.request(self.context['emailWorkTag'],
         {
-            'subject': self._context['errorEmailSubject'],
-            'recipient': self._context['errorEmailRecipient'],
+            'subject': self.context['errorEmailSubject'],
+            'recipient': self.context['errorEmailRecipient'],
             'text': tbString
         })
 

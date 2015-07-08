@@ -116,7 +116,7 @@ def startInTestMode(fixture, comprehensive, server, workers, numWorkers,
             scaffold.destroy()
 
 def onSigTerm(app, signum, frame):
-    logger.info('Caught signal %d, shutting down app.', signum)
+    logger.info('Caught signal %d, shutting down.', signum)
     app.destroy()
 
 
@@ -127,7 +127,8 @@ def startApp(workerMode=False, *args, **kwargs):
         app = config['appClass'](config, workerMode, *args, **kwargs)
         app.setup()
 
-        # Install SIGTERM handler
+        # Install SIGINT and SIGTERM handler
+        signal.signal(signal.SIGINT, partial(onSigTerm, app))
         signal.signal(signal.SIGTERM, partial(onSigTerm, app))
 
         # Start listening for requests
@@ -138,8 +139,6 @@ def startApp(workerMode=False, *args, **kwargs):
         # Start async event loop
         app.startEventLoop()
 
-    except KeyboardInterrupt:
-        pass
     except Exception as e:
         raise argh.CommandError(traceback.format_exc())
     finally:
@@ -147,27 +146,36 @@ def startApp(workerMode=False, *args, **kwargs):
             app.destroy()
 
 
+def onSigForChildren(processes, signum, frame):
+    logger.info('Caught signal %d, shutting down all children.', signum)
+    for p in processes:
+        p.terminate()
+
+
 def startWorkers(numWorkers, *args, **kwargs):
     args = tuple([True] + list(args))
-    workers = []
-    if numWorkers == 1:
+    processes = []
+    if numWorkers == 1 and 'serverProcess' not in kwargs:
+        # This is just a single-worker run - run in this thread to allow
+        # debugging
         startApp(*args, **kwargs)
     else:
+        if 'serverProcess' in kwargs:
+            processes.append(kwargs.pop('serverProcess'))
+
         for i in xrange(numWorkers):
-            p = multiprocessing.Process(target=startApp, args=args, kwargs=kwargs)
+            p = multiprocessing.Process(
+                    target=startApp, args=args, kwargs=kwargs)
             p.start()
-            workers.append(p)
+            processes.append(p)
 
-        # Wait for workers to exit
-        try:
-            for p in workers:
-                p.join()
+        # Install SIGTERM handler that terminates all child processes
+        signal.signal(signal.SIGINT, partial(onSigForChildren, processes))
+        signal.signal(signal.SIGTERM, partial(onSigForChildren, processes))
 
-        except KeyboardInterrupt:
-            # Terminate all workers
-            for p in workers:
-                p.terminate()
-                p.join()
+        # Wait for children to exit
+        for p in processes:
+            p.join()
 
 
 def startComprehensive(numWorkers, *args, **kwargs):
@@ -176,10 +184,9 @@ def startComprehensive(numWorkers, *args, **kwargs):
     p.start()
 
     # Start workers
+    kwargs['serverProcess'] = p
     startWorkers(numWorkers, *args, **kwargs)
 
-    p.join()
-     
 
 
 @argh.arg('-c', '--comprehensive', help='start webserver and workers')
@@ -222,7 +229,7 @@ def start(comprehensive=True, server=False, workers=False,
     
 
 def main():
-    parser = argparse.ArgumentParser(description='Coronado Application')
+    parser = argparse.ArgumentParser(description=config['appName'])
     extensions = loadExtensions()
 
     # Add start command
