@@ -9,3 +9,6 @@ class MissingArgument(Exception):
 
 class TimedOut(Exception):
     pass
+
+class ConfigurationError(Exception):
+    pass

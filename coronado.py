@@ -17,29 +17,6 @@ import Coronado
 
 logger = logging.getLogger(__name__)
 
-# Get list of extension modules
-keysBeforeImport = set(sys.modules.keys())
-
-# Import all extensions
-if os.path.exists('Extensions'):
-    from Extensions import *
-
-moduleNames = set(sys.modules.keys()) - keysBeforeImport
-
-def loadExtensions():
-    global moduleNames
-    extensions = []
-    for modName in moduleNames:
-        mod = sys.modules[modName]
-        config = getattr(mod, '_config', False)
-        if not config:
-            continue
-
-        extensions.append(config)
-
-    return extensions
-
-
 def startInTestMode(fixture, comprehensive, server, workers, numWorkers, 
         *args, **kwargs):
     global config
@@ -125,7 +102,7 @@ def startApp(workerMode=False, *args, **kwargs):
     app = None
     try:
         app = config['appClass'](config, workerMode, *args, **kwargs)
-        app.setup()
+        app.prepare()
 
         # Install SIGINT and SIGTERM handler
         signal.signal(signal.SIGINT, partial(onSigTerm, app))
@@ -230,18 +207,27 @@ def start(comprehensive=True, server=False, workers=False,
 
 def main():
     parser = argparse.ArgumentParser(description=config['appName'])
-    extensions = loadExtensions()
 
     # Add start command
     argh.add_commands(parser, [start])
 
-    # Add extension commands
-    for extension in extensions:
+    # Add commands from plugins
+    for plugin in config['plugins']:
+        clPluginClass = getattr(plugin, 'CommandLinePlugin', False)
+        if not clPluginClass:
+            continue
+
+        # Create the command line plugin
+        clPlugin = clPluginClass()
+        clPlugin.setup(config.copy())
+
+        clPluginConfig = clPlugin.getConfig()
+
         kwargs = {}
-        if extension.get('namespace'):
-            kwargs = dict(title=extension['title'],
-                    namespace=extension['name'])
-        argh.add_commands(parser, extension['commands'], **kwargs)
+        if clPluginConfig.get('namespace'):
+            kwargs = dict(title=clPluginConfig['title'],
+                    namespace=clPluginConfig['name'])
+        argh.add_commands(parser, clPluginConfig['commands'], **kwargs)
 
     # Dispatch command
     argh.dispatch(parser)

@@ -3,13 +3,12 @@ import os
 
 setup(
     name='Coronado',
-    version='1.0',
+    version='2.0',
     scripts=['coronado.py'],
     packages=['Coronado', 'Coronado/RabbitMQ'],
     install_requires=
     [
         'tornado',
-        'PyMySQL',
         'unittest2',
         'argparse',
         'argh',

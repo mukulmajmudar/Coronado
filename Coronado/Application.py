@@ -1,18 +1,10 @@
-import sys
-from contextlib import closing
-import argparse
-import json
-import traceback
 import logging
 import time
 
 import importlib
 import tornado.ioloop
-import tornado.httpclient
-import pymysql
-from pymysql.cursors import DictCursor
 
-from . import RabbitMQ, EventManager, Testing
+from . import RabbitMQ, EventManager
 from .Email import SendEmail
 from .Context import Context
 
@@ -61,7 +53,7 @@ class Application(object):
         self.xheaders = xheaders
 
 
-    def setup(self, context=None):
+    def prepare(self, context=None):
         if context is None:
             context = {}
 
@@ -83,19 +75,14 @@ class Application(object):
         # Assign defaults for any context arguments that are not already there
         if 'ioloop' not in self.context:
             self.context['ioloop'] = tornado.ioloop.IOLoop.instance()
-        if 'database' not in self.context:
-            self.context['database'] = self._getDbConnection()
-        if 'httpClient' not in self.context:
-            # Configure AsyncHTTPClient to use cURL implementation
-            #tornado.httpclient.AsyncHTTPClient.configure(
-            #        "tornado.curl_httpclient.CurlAsyncHTTPClient",
-            #        max_clients=5000)
 
-            self.context['httpClient'] = tornado.httpclient.AsyncHTTPClient(
-                    self.context['ioloop'])
-
-        if 'getNewDbConnection' not in self.context:
-            self.context['getNewDbConnection'] = self._getDbConnection
+        # Set up app plugins
+        for plugin in self.context['plugins']:
+            appPluginClass = getattr(plugin, 'AppPlugin', False)
+            if not appPluginClass:
+                continue
+            appPlugin = appPluginClass()
+            appPlugin.setup(self, self.context)
 
         self.addToContextFlatten(
         {
@@ -117,7 +104,7 @@ class Application(object):
         self.setupEventManager()
 
         # Call API-specific setup functions
-        self._callApiSpecific('setup', self, self.context)
+        self.setup()
 
         # Setup worker if configured
         self.setupWorker()
@@ -136,7 +123,8 @@ class Application(object):
         urlHandlers = [mapping + (self.context,)
                 for mapping in zip(list(urls.keys()), list(urls.values()))]
 
-        self.tornadoApp = tornado.web.Application(urlHandlers)
+        if urlHandlers:
+            self.tornadoApp = tornado.web.Application(urlHandlers)
 
         self.context['tornadoApp'] = self.tornadoApp
 
@@ -178,6 +166,10 @@ class Application(object):
                 ('Installed database schema version {} does '
                 'not match expected version {}').format(
                     currentVersion, expectedVersion))
+
+
+    def setup(self):
+        pass
 
 
     def setupWorker(self):
@@ -253,6 +245,13 @@ class Application(object):
 
 
     def startEventLoop(self):
+        '''
+        # Start plugins
+        for plugin in self.context['plugins']:
+            if hasattr(plugin, 'start'):
+                getattr(plugin, 'start')(self, self.context)
+        '''
+
         self._callApiSpecific('start', self, self.context)
         self.started = True
         self.context['ioloop'].start()
@@ -329,25 +328,6 @@ class Application(object):
             self.context['ioloop'].add_future(workerStopFuture, onWorkerStopped)
 
 
-    def _getDbConnection(self):
-        # Connect to MySQL
-        mysqlArgs = self.context['mysql']
-        database = pymysql.connect(host=mysqlArgs['host'],
-                user=mysqlArgs['user'], passwd=mysqlArgs['password'],
-                db=mysqlArgs['dbName'], use_unicode=True, charset='utf8',
-                cursorclass=DictCursor)
-
-        # Turn on autocommit
-        database.autocommit(True)
-
-        # Set wait_timeout to its largest value (365 days): connection will be
-        # disconnected only if it is idle for 365 days.
-        with closing(database.cursor()) as cursor:
-            cursor.execute("SET wait_timeout=31536000")
-
-        return database
-
-
     def _callApiSpecific(self, functionName, *args, **kwargs):
         for apiVersion in self.context.get('apiVersions', ['1']):
             versionMod = importlib.import_module(
@@ -365,74 +345,3 @@ class Application(object):
 
     _workerMode = None
     _destroyed = None
-
-
-class AppStarter(object):
-
-    def __init__(self, config):
-        self._config = config
-
-
-    def start(self, *args, **kwargs):
-        app = None
-        scaffold = None
-        try:
-            # Parse command-line args
-            parser = argparse.ArgumentParser(description='Server starter')
-            parser.add_argument('-t', '--test', action='store_true',
-                    help='Whether to start the application in test mode')
-            parser.add_argument('-f', '--fixture', type=file,
-                    help='Fixture file path, only applicable in test mode')
-            clArgs = parser.parse_args()
-
-            if clArgs.test:
-                testsMod = __import__(self._config['testPkg'].__name__ +
-                        '.config')
-                config = testsMod.config.config
-
-                # Setup a testing scaffold
-                scaffold = Testing.Scaffold(config, config['appClass'],
-                        *args, **kwargs)
-                scaffold.setup()
-                app = scaffold.app
-
-                # Load test fixture if any
-                if clArgs.fixture is not None:
-                    fixture = json.load(clArgs.fixture)
-                    Testing.installFixture(
-                            app.context['database'], fixture)
-
-                # Start listening for requests
-                scaffold.app.startListening()
-
-                # Start async event loop
-                scaffold.app.startEventLoop()
-
-            else:
-                # Create an application object and set it up.
-                #
-                # Startup code is placed into an "Application" class
-                # for easier testability. See testing pattern recommended by
-                # Bret Taylor (creator of Tornado) at:
-                # https://groups.google.com/d/msg/python-tornado/hnz7JmXqEKk/S2zkl6L9ctEJ
-                app = self._config['appClass'](self._config, *args, **kwargs)
-                app.setup()
-
-                # Start listening for requests
-                app.startListening()
-
-                # Start async event loop
-                app.startEventLoop()
-        except KeyboardInterrupt:
-            pass
-        except Exception:  # pylint: disable=broad-except
-            sys.stderr.write(traceback.format_exc() + '\n')
-        finally:
-            if app is not None:
-                app.destroy()
-
-            if scaffold is not None:
-                scaffold.destroy()
-
-
-    _config = None

@@ -2,12 +2,9 @@ import sys
 import unittest
 import os
 import json
-import tempfile
-from contextlib import closing
 import argparse
 import logging
 
-import pymysql
 import tornado.testing
 
 from .HttpUtil import parseContentType
@@ -142,7 +139,7 @@ class AppTester(Scaffold):
     _suiteBuilder = None
 
 
-class _TestRoot(tornado.testing.AsyncTestCase):
+class TestRoot(tornado.testing.AsyncTestCase):
     '''
     Root class for TestCase and mixins. The purpose of this class is to
     consume the "context" and "testType" constructor keyword args before
@@ -161,10 +158,10 @@ class _TestRoot(tornado.testing.AsyncTestCase):
             del kwargs['testType']
         except KeyError:
             pass
-        super(_TestRoot, self).__init__(*args, **kwargs)
+        super(TestRoot, self).__init__(*args, **kwargs)
 
 
-class TestCase(_TestRoot):
+class TestCase(TestRoot):
 
     def __init__(self, *args, **kwargs):
         '''
@@ -206,132 +203,6 @@ class TestCase(_TestRoot):
 
     _context = None
     _ioloop = None
-
-
-def _installFixture(database, fixture, ignoreConflicts):
-    if 'tableOrder' not in fixture:
-        return
-
-    # Install fixture into database
-    for tableName in fixture['tableOrder']:
-        logger.info('Installing table %s', tableName)
-        for row in fixture[tableName]:
-            query = 'INSERT INTO ' + tableName + ' (' \
-                    + ','.join(list(row.keys())) \
-                    + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
-            with closing(database.cursor()) as cursor:
-                try:
-                    cursor.execute(query, tuple(row.values()))
-                except pymysql.IntegrityError:
-                    if ignoreConflicts:
-                        logger.info('Ignoring conflict in table %s', tableName)
-                        continue
-                    else:
-                        raise
-
-
-def installFixture(database, fixture, ignoreConflicts=False):
-    # If there is no "self" key in self.fixture, that means the
-    # entire fixture dict is the self fixture
-    if 'self' not in fixture:
-        _installFixture(database, fixture, ignoreConflicts)
-    else:
-        # Fixtures for multiple apps are given
-        for appName, fix in list(fixture.items()):
-            if appName == 'self':
-                _installFixture(database, fix, ignoreConflicts)
-            else:
-                # Output fixture into a JSON file and wait for confirmation
-                # from user that it has been loaded into the correct app
-                f = tempfile.NamedTemporaryFile(
-                        prefix=appName + '-', suffix='.json',
-                        delete=False)
-                json.dump(fix, f)
-                f.flush()
-                # pylint: disable=bad-builtin
-                input(('Please load the file "%s" into a test ' +
-                    'instance of "%s". Press ENTER to continue.')
-                    % (f.name, appName))
-
-
-class FixtureMixin(_TestRoot):
-    '''
-    Database fixture mixin for TestCase.
-
-    Implement _getFixture() to return either a dictionary or a
-    JSON file path containing a fixture. The fixture should be
-    a dictionary mapping table names to rows.
-    '''
-
-    def __init__(self, *args, **kwargs):
-        '''
-        A "context" keyword argument is required. It should be a dictionary
-        containing at least the following mappings:
-
-        database => MySQL database connection
-        mysql => dictionary of MySQL connection arguments: must contain at least
-                 user, password, dbName
-        '''
-        context = kwargs['context']
-        self._database = context['database']
-        self._mysqlArgs = context['mysql']
-
-        # Call parent constructor
-        super(FixtureMixin, self).__init__(*args, **kwargs)
-
-
-    def setUp(self):
-        # Call parent version
-        super(FixtureMixin, self).setUp()
-
-        # Get the fixture
-        fixture = self._getFixture()
-
-        # If fixture is a file path, load it as JSON
-        if isinstance(fixture, str):
-            fixture = json.load(open(fixture))
-
-        # Fixture must be a dictionary
-        if not isinstance(fixture, dict):
-            raise IllegalArgument('fixture must be a dictionary')
-
-        # Install the fixture
-        installFixture(self._database, fixture)
-
-
-    def tearDown(self):
-        '''
-        Truncate all tables.
-        '''
-        # Call parent version
-        super(FixtureMixin, self).tearDown()
-
-        if self._mysqlArgs is None:
-            return
-
-        # Credit: http://stackoverflow.com/a/8912749/1196816
-        cmd = ("mysql -u %s -p'%s' -Nse 'show tables' %s " \
-                + "| while read table; do mysql -u %s -p'%s' " \
-                + "-e \"truncate table $table\" " \
-                + "%s; done") % (
-                        self._mysqlArgs['user'],
-                        self._mysqlArgs['password'],
-                        self._mysqlArgs['dbName'],
-                        self._mysqlArgs['user'],
-                        self._mysqlArgs['password'],
-                        self._mysqlArgs['dbName'])
-
-        rc = os.system(cmd)
-        if rc != 0:
-            raise TestEnvironmentError('Failed to reset database')
-
-
-    def _getFixture(self):
-        return {}
-
-
-    _database = None
-    _mysqlArgs = None
 
 
 def getInputSets(inputValues):
@@ -399,7 +270,7 @@ def getInputSets(inputValues):
     return buildInputSet(0, {}, set(), True)
 
 
-class InputSetsMixin(_TestRoot):
+class InputSetsMixin(TestRoot):
 
     def setUp(self):
         # Call parent version

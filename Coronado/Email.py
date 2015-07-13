@@ -5,13 +5,19 @@ import string
 import logging
 
 from .Worker import WorkHandler
-from .Exceptions import MissingArgument
+from .Exceptions import MissingArgument, ConfigurationError
 
 logger = logging.getLogger(__name__)
 
 class SendEmail(WorkHandler):
 
     def __call__(self):
+        # Make sure email is configured
+        smtpArgs = self._context.get('smtp')
+        if smtpArgs is None:
+            raise ConfigurationError(
+                    'SMTP email is not enabled in configuration file.')
+
         message = self.request.body
 
         # Get parameters from the message
@@ -28,8 +34,6 @@ class SendEmail(WorkHandler):
 
         if text is None and htmlFile is None and textFile is None:
             raise MissingArgument('Missing body')
-
-        smtpArgs = self._context['smtp']
 
         # Assemble message
         emailMsg = text is not None and MIMEText(text) \

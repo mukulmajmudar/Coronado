@@ -7,19 +7,14 @@ import tornado.web
 from .HttpUtil import parseContentType
 from .Context import Context
 
-class ReqHandlerCfgError(Exception):
-    pass
-
-
 class RequestHandler(tornado.web.RequestHandler):
     context = None
     ioloop = None
-    database = None
     httpClient = None
 
     def initialize(self, **kwargs):
         # Initialize context with defaults
-        self.context = self._context = Context(
+        self.context = Context(
         {
             'allowedCORSOrigins': [],
             'sendEmailOnError': False,
@@ -30,16 +25,6 @@ class RequestHandler(tornado.web.RequestHandler):
 
         # Update context with arguments
         self.context.update(kwargs)
-
-        # Validate context
-        if self._context['sendEmailOnError']:
-            if self._context['errorEmailRecipient'] is None:
-                raise ReqHandlerCfgError('errorEmailRecipient argument is ' +
-                    'required in order to send errors')
-
-            if self._context['worker'] is None:
-                raise ReqHandlerCfgError('A worker is required in order to ' +
-                    'send error emails')
 
         self.context.flattenOnto(self)
 
@@ -118,12 +103,6 @@ class RequestHandler(tornado.web.RequestHandler):
             return json.loads(self.request.body)
         except ValueError:
             raise tornado.web.HTTPError(415)
-
-
-    _context = None
-    _ioloop = None
-    _database = None
-    _httpClient = None
 
 
 def withJsonBody(attrName='jsonBody', charset='UTF-8'):
