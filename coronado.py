@@ -94,7 +94,7 @@ def startInTestMode(fixture, comprehensive, server, workers, numWorkers,
 
 def onSigTerm(app, signum, frame):
     logger.info('Caught signal %d, shutting down.', signum)
-    app.destroy()
+    app.destroyApp()
 
 
 def startApp(workerMode=False, *args, **kwargs):
@@ -108,9 +108,6 @@ def startApp(workerMode=False, *args, **kwargs):
         signal.signal(signal.SIGINT, partial(onSigTerm, app))
         signal.signal(signal.SIGTERM, partial(onSigTerm, app))
 
-        # Start listening for requests
-        app.startListening()
-
         logger.info(workerMode and 'Started worker' or 'Started web server')
 
         # Start async event loop
@@ -120,7 +117,7 @@ def startApp(workerMode=False, *args, **kwargs):
         raise argh.CommandError(traceback.format_exc())
     finally:
         if app is not None:
-            app.destroy()
+            app.destroyApp()
 
 
 def onSigForChildren(processes, signum, frame):

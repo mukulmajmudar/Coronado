@@ -1,7 +1,6 @@
 import logging
 import time
 
-import importlib
 import tornado.ioloop
 
 from . import RabbitMQ, EventManager
@@ -19,13 +18,6 @@ workerClasses = \
     }
 }
 
-class DatabaseError(Exception):
-    pass
-
-class SchemaVersionMismatch(Exception):
-    pass
-
-
 class Application(object):
     '''
     Coronado Application base class.
@@ -38,8 +30,6 @@ class Application(object):
     config = None
     context = None
     tornadoApp = None
-    httpServer = None
-    urlHandlers = None
     workHandlers = None
     xheaders = None
     started = False
@@ -48,7 +38,6 @@ class Application(object):
         self.config = config
         self._workerMode = workerMode
         self._destroyed = False
-        self.urlHandlers = {}
         self.workHandlers = {}
         self.xheaders = xheaders
 
@@ -72,17 +61,19 @@ class Application(object):
         # Override with passed in arguments (customization)
         self.context.update(context)
 
-        # Assign defaults for any context arguments that are not already there
+        # Assign default IOLoop instance
         if 'ioloop' not in self.context:
             self.context['ioloop'] = tornado.ioloop.IOLoop.instance()
 
         # Set up app plugins
+        self.context['appPlugins'] = {}
         for plugin in self.context['plugins']:
             appPluginClass = getattr(plugin, 'AppPlugin', False)
             if not appPluginClass:
                 continue
             appPlugin = appPluginClass()
             appPlugin.setup(self, self.context)
+            self.context['appPlugins'][appPlugin.pluginId] = appPlugin
 
         self.addToContextFlatten(
         {
@@ -109,66 +100,11 @@ class Application(object):
         # Setup worker if configured
         self.setupWorker()
 
-        # Define url handlers
-        urls = {}
-        for i, apiVersion in enumerate(self.urlHandlers):
-            # If no API version is specified, we will use the oldest one
-            if i == 0:
-                urls.update(self.urlHandlers[apiVersion])
-
-            versionUrls = self.urlHandlers[apiVersion]
-            for url, handlerClass in list(versionUrls.items()):
-                urls['/v' + str(apiVersion) + url] = handlerClass
-        logger.debug('URL mappings: %s', str(urls))
-        urlHandlers = [mapping + (self.context,)
-                for mapping in zip(list(urls.keys()), list(urls.values()))]
-
-        if urlHandlers:
-            self.tornadoApp = tornado.web.Application(urlHandlers)
-
-        self.context['tornadoApp'] = self.tornadoApp
-
-    def getCurrDbSchemaVersion(self):
-        '''
-        Get currently installed database schema version.
-        '''
-        currentVersion = None
-        with closing(self.context['database'].cursor()) as cursor:
-            try:
-                cursor.execute('SELECT * FROM metadata WHERE attribute = %s',
-                        ('version',))
-            except pymysql.ProgrammingError as e:
-                # 1146 == table does not exist
-                if e.args[0] == 1146:
-                    # Version 1 tables don't exist either, so it is most
-                    # likely that no schema is installed
-                    return None
-                else:
-                    raise
-            else:
-                row = cursor.fetchone()
-                if not row:
-                    raise DatabaseError('Could not read current ' +
-                        'database version')
-                currentVersion = row['value']
-
-        return currentVersion
-
-
-    def checkDbSchemaVersion(self):
-        currentVersion = self.getCurrDbSchemaVersion()
-
-        # Get most recent version from context
-        expectedVersion = self.context['databasePkg'].versions[-1]
-
-        if currentVersion != expectedVersion:
-            raise SchemaVersionMismatch(
-                ('Installed database schema version {} does '
-                'not match expected version {}').format(
-                    currentVersion, expectedVersion))
-
 
     def setup(self):
+        '''
+        Set-up-time hook for sub-classes.
+        '''
         pass
 
 
@@ -232,40 +168,33 @@ class Application(object):
         })
 
 
-    def startListening(self):
-        if self._workerMode:
-            return
-
-        # Create a new HTTPServer
-        from tornado.httpserver import HTTPServer
-        self.httpServer = HTTPServer(self.tornadoApp, xheaders=self.xheaders)
-
-        # Start listening
-        self.httpServer.listen(self.context['port'])
-
-
     def startEventLoop(self):
-        '''
-        # Start plugins
-        for plugin in self.context['plugins']:
-            if hasattr(plugin, 'start'):
-                getattr(plugin, 'start')(self, self.context)
-        '''
+        # Start app plugins
+        for appPlugin in self.context['appPlugins']:
+            appPlugin.start(self, self.context)
 
-        self._callApiSpecific('start', self, self.context)
+        self.start()
         self.started = True
+
         self.context['ioloop'].start()
+
+
+    def start(self):
+        '''
+        Start-time hook for sub-classes.
+        '''
+        pass
+
+
+    def stop(self):
+        '''
+        Stop-time hook for sub-classes.
+        '''
+        pass
 
 
     def stopEventLoop(self):
         self.context['ioloop'].stop()
-
-
-    def addUrlHandlers(self, version, urlHandlers):
-        if version in self.urlHandlers:
-            self.urlHandlers[version].update(urlHandlers)
-        else:
-            self.urlHandlers[version] = urlHandlers
 
 
     def addWorkHandlers(self, handlers):
@@ -279,28 +208,42 @@ class Application(object):
         return self.addWorkHandlers(handlers)
 
 
-    def destroy(self):
+    def destroyApp(self):
         # If already destroyed, do nothing
         if not self.started or self._destroyed:
             return
 
-        self._callApiSpecific('destroy', self, self.context)
+        # Sub-class destroy
+        self.destroy()
 
-        # Stop accepting new HTTP connections, then shutdown server after a
-        # delay. This pattern is suggested by Ben Darnell (a maintainer of
-        # Tornado):
-        # https://groups.google.com/d/msg/python-tornado/NTJfzETaxeI/MaJ-hvTw4_4J
+        # Destroy app plugins
+        for appPlugin in self.context['appPlugins']:
+            appPlugin.destroy(self, self.context)
 
         if not self._workerMode:
-            # Stop accepting new connections
-            self.httpServer.stop()
-
             if self.context['worker'] is not None:
                 # Stop worker proxy
                 logger.info('Stopping worker proxy')
         else:
             if self.context['worker'] is not None:
                 logger.info('Stopping worker')
+
+        def stopEvtLoop():
+            # Stop event loop after a delay
+            delaySeconds = self.context['shutdownDelay']
+
+            label = self._workerMode and 'Worker application' \
+                    or 'Server application'
+
+            def stop():
+                self.stopEventLoop()
+                self._destroyed = True
+                logger.info('%s has been shut down.', label)
+
+            logger.info('%s will be shut down in %d seconds', label,
+                    delaySeconds)
+            self.context['ioloop'].add_timeout(
+                    time.time() + delaySeconds, stop)
 
         if self.context['worker'] is not None:
             workerStopFuture = self.context['worker'].stop()
@@ -309,32 +252,18 @@ class Application(object):
                 try:
                     workerStopFuture.result()
                 finally:
-                    # Stop event loop after a delay
-                    delaySeconds = self.context['shutdownDelay']
-
-                    label = self._workerMode and 'Worker application' \
-                            or 'Server application'
-
-                    def stop():
-                        self.stopEventLoop()
-                        self._destroyed = True
-                        logger.info('%s has been shut down.', label)
-
-                    logger.info('%s will be shut down in %d seconds', label,
-                            delaySeconds)
-                    self.context['ioloop'].add_timeout(
-                            time.time() + delaySeconds, stop)
+                    stopEvtLoop()
 
             self.context['ioloop'].add_future(workerStopFuture, onWorkerStopped)
+        else:
+            stopEvtLoop()
 
 
-    def _callApiSpecific(self, functionName, *args, **kwargs):
-        for apiVersion in self.context.get('apiVersions', ['1']):
-            versionMod = importlib.import_module(
-                    self.context['appPackage'].__name__
-                    + '.v' + apiVersion)
-            if hasattr(versionMod, functionName):
-                getattr(versionMod, functionName)(*args, **kwargs)
+    def destroy(self):
+        '''
+        Destroy-time hook for sub-classes.
+        '''
+        pass
 
 
     def addToContextFlatten(self, attrKeys):

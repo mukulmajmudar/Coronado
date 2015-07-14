@@ -2,6 +2,9 @@ class AppPlugin(object):
     def setup(self, application, context):
         pass
 
+    def start(self, application, context):
+        pass
+
     def destroy(self, application, context):
         pass
 

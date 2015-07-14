@@ -8,27 +8,21 @@ class DefaultConfig(Config):
         super(DefaultConfig, self).__init__(
         [
             'admin',
-            'allowedCORSOrigins',
             'allowedWSOrigins',
-            'apiVersions',
             'appClass',
             'appName',
             'appPackage',
             'appRoot',
-            'database',
             'errorEmailRecipient',
             'errorEmailSubject',
             'emailWorkTag',
             'eventManager',
-            'mysql',
             'plugins',
-            'port',
             'sendEmail',
             'sendEmailOnError',
             'shutdownDelay',
             'smtp',
             'testPkg',
-            'uri',
             'worker',
         ] + keys)
 
@@ -49,22 +43,11 @@ class DefaultConfig(Config):
         return None
 
 
-    def _getAllowedCORSOrigins(self):
-        '''
-        List of origins allowed to access this server.
-        '''
-        return []
-
-
     def _getAllowedWSOrigins(self):
         '''
         List of origins allowed to access this server using WebSocket protocol.
         '''
         return []
-
-
-    def _getApiVersions(self):
-        return ['1']
 
 
     def _getAppClass(self):
@@ -89,13 +72,6 @@ class DefaultConfig(Config):
         raise NotImplementedError()
 
 
-    def _getDatabase(self):
-        '''
-        Possible values: mysql
-        '''
-        return None
-
-
     def _getErrorEmailRecipient(self):
         return self['admin']['email']
 
@@ -112,55 +88,8 @@ class DefaultConfig(Config):
         return None
 
 
-    def _getMysql(self):
-        '''
-        MySQL parameters
-        '''
-        if self['database'] == 'mysql':
-            return \
-            {
-                'host': self._getMysqlHost(),
-                'port': self._getMysqlPort(),
-                'user': self._getMysqlUser(),
-                'password': self._getMysqlPassword(),
-                'dbName': self._getMysqlDbName(),
-                'schemaFilePath': self._getMySchemaFilePath()
-            }
-
-
-    def _getMysqlHost(self):
-        return 'localhost'
-
-
-    def _getMysqlPort(self):
-        return 3306
-
-
-    def _getMysqlUser(self):
-        raise NotImplementedError()
-
-
-    def _getMysqlPassword(self):
-        raise NotImplementedError()
-
-
-    def _getMysqlDbName(self):
-        raise NotImplementedError()
-
-
-    def _getMySchemaFilePath(self):
-        raise NotImplementedError()
-
-
     def _getPlugins(self):
         return []
-
-
-    def _getPort(self):
-        '''
-        Port on which to listen for requests.
-        '''
-        raise NotImplementedError()
 
 
     def _getSendEmail(self):
@@ -215,13 +144,6 @@ class DefaultConfig(Config):
         Package containing tests and test config.
         '''
         return None
-
-
-    def _getUri(self):
-        '''
-        URI of this application.
-        '''
-        return 'http://127.0.0.1:%d' % (self['port'],)
 
 
     def _getWorker(self):
