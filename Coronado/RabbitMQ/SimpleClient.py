@@ -34,20 +34,14 @@ class SimpleClient(object):
     def setup(self, *queueNames):
         # Use a blocking connection to declare the app's queues
         params = pika.ConnectionParameters(host=self._host, port=self._port)
-        connection = pika.BlockingConnection(params)
-        with closing(connection.channel()) as channel:
-            # Close connection once channel is closed
-            # pylint: disable=unused-argument
-            def closeConnection(channel, replyCode, replyText):
-                connection.close()
-            channel.add_on_close_callback(closeConnection)
-
-            # Declare durable queues; we will use the
-            # default exchange for simple tag-based routing
-            for queueName in queueNames:
-                logger.info('Declaring RabbitMQ queue %s', queueName)
-                channel.queue_declare(queue=queueName, durable=True)
-                logger.info('Declared RabbitMQ queue %s', queueName)
+        with closing(pika.BlockingConnection(params)) as connection:
+            with closing(connection.channel()) as channel:
+                # Declare durable queues; we will use the
+                # default exchange for simple tag-based routing
+                for queueName in queueNames:
+                    logger.info('Declaring RabbitMQ queue %s', queueName)
+                    channel.queue_declare(queue=queueName, durable=True)
+                    logger.info('Declared RabbitMQ queue %s', queueName)
 
 
     # pylint: disable=too-many-arguments
