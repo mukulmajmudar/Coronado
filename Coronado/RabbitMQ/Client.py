@@ -37,6 +37,8 @@ def connected(method):
             method(self, *args, **kwargs)
 
         connectFuture = self.connect()
+        if connectFuture is None:
+            raise ConnectionError()
 
         return transform(connectFuture, onConnected, ioloop=self._ioloop)
 
@@ -188,7 +190,8 @@ class Client(object):
         self._channel = connection.channel(self._onChannel)
 
 
-    def _onConnectError(self):
+    # pylint: disable=unused-argument
+    def _onConnectError(self, *args, **kwargs):
         self._connectFuture.set_exception(ConnectionError())
         self._connectFuture = None
 
