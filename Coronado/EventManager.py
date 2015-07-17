@@ -34,10 +34,8 @@ class EventManager(object):
 
     def _onEvent(self, listenerId, **kwargs):
         # Call message handler associated with the binding ID, if any
-        try:
+        if listenerId in self.messageHandlers:
             self.messageHandlers[listenerId](**kwargs)
-        except KeyError:
-            pass
 
 
     def _saveHandler(self, listenerId, messageHandler):

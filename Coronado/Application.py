@@ -166,7 +166,7 @@ class Application(object):
         if currentVersion != expectedVersion:
             raise SchemaVersionMismatch(
                 ('Installed database schema version {} does '
-                'not expected version {}').format(
+                'not match expected version {}').format(
                     currentVersion, expectedVersion))
 
 

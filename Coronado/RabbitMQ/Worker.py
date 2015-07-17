@@ -69,6 +69,17 @@ class WorkerProxy(BaseWorkerProxy):
         return future
 
 
+    def destroy(self, requestQueue=False, responseQueue=False):
+        deleteQueues = []
+        if requestQueue:
+            deleteQueues.append(self._requestQueueName)
+        if responseQueue:
+            deleteQueues.append(self._responseQueueName)
+        if deleteQueues:
+            self._client.deleteQueues(deleteQueues)
+
+
+
     def _request(self, requestId, tag, body, contentType, contentEncoding):
         '''
         Publish a request to a worker.
@@ -146,6 +157,10 @@ class Worker(BaseWorker):
         self._ioloop.add_future(self._client.stopConsuming(), onStopped)
 
         return future
+
+
+    def destroy(self, *args, **kwargs):
+        pass
 
 
     # pylint: disable=too-many-arguments

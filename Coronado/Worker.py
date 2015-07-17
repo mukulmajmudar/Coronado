@@ -54,6 +54,10 @@ class WorkerInterface(object):
         raise NotImplementedError()
 
 
+    def destroy(self, *args, **kwargs):
+        raise NotImplementedError()
+
+
 class WorkerProxy(WorkerInterface):
 
     def __init__(self, ioloop=None):

@@ -85,6 +85,19 @@ class SimpleClient(object):
         return declareFuture
 
 
+    def deleteQueues(self, queueNames):
+        # Use a blocking connection to delete the app's queues
+        params = pika.ConnectionParameters(host=self._host, port=self._port)
+        with closing(pika.BlockingConnection(params)) as connection:
+            with closing(connection.channel()) as channel:
+                # Delete durable queues; we will use the
+                # default exchange for simple tag-based routing
+                for queueName in queueNames:
+                    logger.info('Deleting RabbitMQ queue %s', queueName)
+                    channel.queue_delete(queue=queueName)
+                    logger.info('Deleted RabbitMQ queue %s', queueName)
+
+
     def connect(self):
         logger.info('Connecting to RabbitMQ server')
 
