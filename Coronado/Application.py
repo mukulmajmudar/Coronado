@@ -26,6 +26,12 @@ workerClasses = \
     }
 }
 
+class DatabaseError(Exception):
+    pass
+
+class SchemaVersionMismatch(Exception):
+    pass
+
 
 class Application(object):
     '''
@@ -90,6 +96,9 @@ class Application(object):
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
 
+        # Check Database schema version matches what is expected
+        self.checkDbSchemaVersion()
+
         # Setup eventManager if configured
         self.setupEventManager()
 
@@ -120,6 +129,45 @@ class Application(object):
         {
             'public': ['getNewDbConnection']
         })
+
+    def getCurrDbSchemaVersion(self):
+        '''
+        Get currently installed database schema version.
+        '''
+        currentVersion = None
+        with closing(self.context['database'].cursor()) as cursor:
+            try:
+                cursor.execute('SELECT * FROM metadata WHERE attribute = %s',
+                        ('version',))
+            except MySQLdb.ProgrammingError as e:
+                # 1146 == table does not exist
+                if e.args[0] == 1146:
+                    # Version 1 tables don't exist either, so it is most
+                    # likely that no schema is installed
+                    return None
+                else:
+                    raise
+            else:
+                row = cursor.fetchone()
+                if not row:
+                    raise DatabaseError('Could not read current ' +
+                        'database version')
+                currentVersion = row['value']
+
+        return currentVersion
+
+
+    def checkDbSchemaVersion(self):
+        currentVersion = self.getCurrDbSchemaVersion()
+
+        # Get most recent version from context
+        expectedVersion = self.context['databasePkg'].versions[-1]
+
+        if currentVersion != expectedVersion:
+            raise SchemaVersionMismatch(
+                ('Installed database schema version {} does '
+                'not expected version {}').format(
+                    currentVersion, expectedVersion))
 
 
     def setupWorker(self):
