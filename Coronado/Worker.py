@@ -10,6 +10,7 @@ from tornado import escape
 from tornado.ioloop import IOLoop
 
 from .Concurrent import when
+from .Context import Context
 
 # Logger for this module
 logger = logging.getLogger(__name__)
@@ -384,9 +385,8 @@ class WorkHandler(object):
         # avoid code duplication
 
         # Initialize context with defaults
-        self._context = self.context = WorkHandler._Context(
+        self._context = self.context = Context(
         {
-            'allowedCORSOrigins': [],
             'sendEmailOnError': False,
             'errorEmailRecipient': None,
             'errorEmailSubject': '[ERROR] Server Error Occurred',
@@ -395,7 +395,6 @@ class WorkHandler(object):
 
         # Update context with arguments
         self._context.update(kwargs)
-        self._context.getNewDbConnection = kwargs.get('getNewDbConnection')
 
         # Validate context
         if self._context['sendEmailOnError']:
@@ -407,22 +406,7 @@ class WorkHandler(object):
                 raise WorkHandlerCfgError('A worker is required in order to ' +
                     'send error emails')
 
-        self.ioloop = self._ioloop = self._context['ioloop']
-        self.database = self._database = self._context['database']
-        self.httpClient = self._httpClient = self._context['httpClient']
-
-        # Store public and non-public context attributes as self's attributes
-        # for ease of access in request handlers
-        try:
-            for key in self._context['flatten']['public']:
-                setattr(self, key, self._context[key])
-        except KeyError:
-            pass
-        try:
-            for key in self._context['flatten']['non-public']:
-                setattr(self, '_' + key, self._context[key])
-        except KeyError:
-            pass
+        self.context.flattenOnto(self)
 
 
     def __call__(self):
@@ -435,10 +419,6 @@ class WorkHandler(object):
         asynchronous, return a future.
         '''
         raise NotImplementedError()
-
-
-    class _Context(dict):
-        getNewDbConnection = None
 
 
     # Non-public instance attributes

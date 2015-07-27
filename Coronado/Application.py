@@ -14,6 +14,7 @@ from MySQLdb.cursors import DictCursor
 
 from . import RabbitMQ, EventManager, Testing
 from .Email import SendEmail
+from .Context import Context
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ class Application(object):
         context['workerMode'] = self._workerMode
 
         # Initialize context to be a copy of the configuration
-        self.context = self.config.copy()
+        self.context = Context(self.config.copy())
 
         # Deep copy worker and event manager params (copy.deepcopy doesn't
         # work presumably because config contains classes)
@@ -95,6 +96,19 @@ class Application(object):
 
         if 'getNewDbConnection' not in self.context:
             self.context['getNewDbConnection'] = self._getDbConnection
+
+        self.addToContextFlatten(
+        {
+            'public':
+            [
+                'ioloop',
+                'database',
+                'httpClient',
+                'getNewDbConnection'
+            ],
+            # Some old clients need non-public versions too
+            'non-public': ['ioloop', 'database', 'httpClient']
+        })
 
         # Check Database schema version matches what is expected
         self.checkDbSchemaVersion()
@@ -125,10 +139,6 @@ class Application(object):
         self.tornadoApp = tornado.web.Application(urlHandlers)
 
         self.context['tornadoApp'] = self.tornadoApp
-        self.addToContextFlatten(
-        {
-            'public': ['getNewDbConnection']
-        })
 
     def getCurrDbSchemaVersion(self):
         '''
@@ -347,15 +357,9 @@ class Application(object):
 
 
     def addToContextFlatten(self, attrKeys):
-        flatten = self.context.get('flatten', {})
         for attrType, keys in attrKeys.iteritems():
-            if attrType in flatten:
-                for key in keys:
-                    flatten[attrType].append(key)
-            else:
-                flatten[attrType] = keys[:]
-        self.context['flatten'] = flatten
-
+            for key in keys:
+                self.context.addFlattenedAttr(attrType, key)
 
 
     _workerMode = None

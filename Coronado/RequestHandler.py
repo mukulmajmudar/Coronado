@@ -5,6 +5,7 @@ from functools import wraps
 
 import tornado.web
 from .HttpUtil import parseContentType
+from .Context import Context
 
 class ReqHandlerCfgError(Exception):
     pass
@@ -18,7 +19,7 @@ class RequestHandler(tornado.web.RequestHandler):
 
     def initialize(self, **kwargs):
         # Initialize context with defaults
-        self.context = self._context = RequestHandler._Context(
+        self.context = self._context = Context(
         {
             'allowedCORSOrigins': [],
             'sendEmailOnError': False,
@@ -29,7 +30,6 @@ class RequestHandler(tornado.web.RequestHandler):
 
         # Update context with arguments
         self.context.update(kwargs)
-        self.context.getNewDbConnection = kwargs.get('getNewDbConnection')
 
         # Validate context
         if self._context['sendEmailOnError']:
@@ -41,23 +41,7 @@ class RequestHandler(tornado.web.RequestHandler):
                 raise ReqHandlerCfgError('A worker is required in order to ' +
                     'send error emails')
 
-
-        self.ioloop = self._ioloop = self._context['ioloop']
-        self.database = self._database = self._context['database']
-        self.httpClient = self._httpClient = self._context['httpClient']
-
-        # Store public and non-public context attributes as self's attributes
-        # for ease of access in request handlers
-        try:
-            for key in self.context['flatten']['public']:
-                setattr(self, key, self.context[key])
-        except KeyError:
-            pass
-        try:
-            for key in self.context['flatten']['non-public']:
-                setattr(self, '_' + key, self.context[key])
-        except KeyError:
-            pass
+        self.context.flattenOnto(self)
 
 
     def options(self, *args, **kwargs):
@@ -133,10 +117,6 @@ class RequestHandler(tornado.web.RequestHandler):
             return json.loads(self.request.body)
         except ValueError:
             raise tornado.web.HTTPError(415)
-
-
-    class _Context(dict):
-        getNewDbConnection = None
 
 
     _context = None

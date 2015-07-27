@@ -3,7 +3,8 @@ import traceback
 
 import tornado.websocket
 
-from .RequestHandler import RequestHandler, ReqHandlerCfgError
+from .RequestHandler import ReqHandlerCfgError
+from .Context import Context
 
 # pylint: disable=abstract-method
 class WebSocketHandler(tornado.websocket.WebSocketHandler):
@@ -16,7 +17,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
         super(WebSocketHandler, self).__init__(*args)
 
         # Initialize context with defaults
-        self.context = RequestHandler._Context(
+        self.context = Context(
         {
             'allowedWSOrigins': [],
             'sendEmailOnError': False,
@@ -27,7 +28,6 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
         # Update context with arguments
         self.context.update(kwargs)
-        self.context.getNewDbConnection = kwargs.get('getNewDbConnection')
 
         # Validate context
         if self.context['sendEmailOnError']:
@@ -39,22 +39,7 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
                 raise ReqHandlerCfgError('A worker is required in order to ' +
                     'send error emails')
 
-        self.ioloop = self.context['ioloop']
-        self.database = self.context['database']
-        self.httpClient = self.context['httpClient']
-
-        # Store public and non-public context attributes as self's attributes
-        # for ease of access in request handlers
-        try:
-            for key in self.context['flatten']['public']:
-                setattr(self, key, self.context[key])
-        except KeyError:
-            pass
-        try:
-            for key in self.context['flatten']['non-public']:
-                setattr(self, '_' + key, self.context[key])
-        except KeyError:
-            pass
+        self.context.flattenOnto(self)
 
 
     def check_origin(self, origin):
