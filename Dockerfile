@@ -23,7 +23,7 @@ RUN easy_install -Z \
     tornado \
     unittest2
 
-RUN easy_install pylint
+RUN easy_install logilab-common==0.63.0 pylint
 
 COPY . /root/Coronado
 WORKDIR /root/Coronado
