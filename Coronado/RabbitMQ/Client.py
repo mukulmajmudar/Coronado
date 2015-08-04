@@ -85,8 +85,12 @@ class Client(object):
         declareFuture = tornado.concurrent.Future()
 
         def onQueueDeclared(methodFrame):   # pylint: disable=unused-argument
-            logger.info('Declared RabbitMQ queue %s', name)
-            declareFuture.set_result(None)
+            queueName = name
+            if queueName == '':
+                # Get auto-generated queue name
+                queueName = methodFrame.method.queue
+            logger.info('Declared RabbitMQ queue %s', queueName)
+            declareFuture.set_result(queueName)
 
         logger.info('Declaring RabbitMQ queue %s', name)
 

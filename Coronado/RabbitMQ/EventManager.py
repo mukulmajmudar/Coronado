@@ -37,23 +37,25 @@ class EventManager(BaseEventManager):
         exchangeName = '%s-%s' % (sourceId, exchangeType)
         if listenerId is None:
             listenerId = ''
-        queueName = listenerId
+        queueName = [listenerId]
 
         # Declare exchange
         declareXFuture = self.client.declareExchange(exchangeName, exchangeType)
 
         # Declare queue
-        declareQFuture = self.client.declareQueue(queueName)
+        declareQFuture = self.client.declareQueue(queueName[0])
 
         def onDeclared(future):
             # Trap exceptions, if any
             declareXFuture, declareQFuture = future.result()
             declareXFuture.result()
-            declareQFuture.result()
+            queueResult = declareQFuture.result()
 
             # Bind the queue
+            if queueName[0] == '':
+                queueName[0] = queueResult
             queueBindFuture = self.client.bindQueue(
-                    queueName, exchangeName, eventType)
+                    queueName[0], exchangeName, eventType)
 
             return transform(queueBindFuture, onQueueBound, ioloop=self.ioloop)
 
@@ -62,7 +64,7 @@ class EventManager(BaseEventManager):
             queueBindFuture.result()
 
             # Start consuming from the subscriber queue
-            consumeFuture = self.client.startConsuming(queueName)
+            consumeFuture = self.client.startConsuming(queueName[0])
 
             return transform(when(consumeFuture), onStartedConsuming)
 
