@@ -30,9 +30,11 @@ class EventManager(BaseEventManager):
                 self.client.declareExchange(self.directExName, 'direct'))
 
 
-    def on(self, sourceId, eventType, listener, listenerId=None):
+    def on(self, eventType, listener, sourceId=None, listenerId=None):
         # Figure out the exchange and queue names based on whether
         # event type corresponds to a topic or direct exchange
+        if sourceId is None:
+            sourceId = self.name
         exchangeType = '.' in eventType and 'topic' or 'direct'
         exchangeName = '%s-%s' % (sourceId, exchangeType)
         if listenerId is None:
@@ -81,14 +83,18 @@ class EventManager(BaseEventManager):
 
 
     def trigger(self, eventType, **kwargs):
-        body = json.dumps(kwargs)
+        contentType = kwargs.pop('contentType', 'application/json')
+        contentEncoding = kwargs.pop('contentEncoding', 'utf-8')
+        body = contentType == 'application/json' and \
+                json.dumps(kwargs, encoding=contentEncoding) or \
+                kwargs['body']
 
         # If the key contains dots, publish to the topic exchange, otherwise
         # publish to the direct exchange
         exchangeName = '.' in eventType and self.topicExName \
                 or self.directExName
         self.client.publish(exchangeName, eventType, body,
-                'application/json', 'utf-8')
+                contentType, contentEncoding)
 
 
     def off(self, listenerId):
@@ -98,8 +104,15 @@ class EventManager(BaseEventManager):
 
     # pylint: disable=unused-argument
     def _onMessage(self, consumerTag, properties, body):
-        # Assume body is a JSON string
-        kwargs = json.loads(body)
+        # Get content type and encoding
+        contentType, contentEncoding = properties.content_type, \
+                properties.content_encoding
 
-        # Call onEvent
-        self._onEvent(consumerTag, **kwargs)
+        if contentType == 'application/json':
+            kwargs = json.loads(body, encoding=contentEncoding)
+
+            # Call onEvent
+            self._onEvent(consumerTag, **kwargs)
+        else:
+            self._onEvent(consumerTag, body=body, contentType=contentType,
+                    contentEncoding=contentEncoding)

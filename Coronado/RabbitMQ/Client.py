@@ -226,8 +226,8 @@ class Client(object):
 
 
     def _onMessage(self, channel, basicDeliver, properties, body):
-        logger.info('Message received (may be partial): %s', body[0:50])
-        logger.debug('Message body (may be partial): %s', body[0:1000])
+        #logger.info('Message received (may be partial): %s', body[0:50])
+        #logger.debug('Message body (may be partial): %s', body[0:1000])
         self._messageHandler(basicDeliver.consumer_tag, properties, body)
 
         # Acknowledge message
