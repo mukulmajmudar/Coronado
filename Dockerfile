@@ -27,4 +27,4 @@ RUN easy_install logilab-common==0.63.0 pylint
 
 COPY . /root/Coronado
 WORKDIR /root/Coronado
-CMD ["python", "setup.py", "bdist_egg"]
+ENTRYPOINT ["./entrypoint.sh"]

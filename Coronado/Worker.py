@@ -108,6 +108,21 @@ class WorkerProxy(WorkerInterface):
                 partial(self._onRequestSent, requestFuture,
                     expectResponse, requestId, timeout))
 
+        # If we are expecting a response, we store our future for some time
+        if expectResponse:
+            assert requestId is not None
+            WorkerProxy._requestFutures[requestId] = requestFuture
+
+            # If our future is still stored after a while, remove it and
+            # set an error on it
+            # TODO: Remove timeout on successful response
+            def removeFuture():
+                if requestId in WorkerProxy._requestFutures:
+                    logger.info('Worker request timed out')
+                    requestFuture.set_exception(ResponseTimeout())
+                    del WorkerProxy._requestFutures[requestId]
+            self._ioloop.add_timeout(timeout, removeFuture)
+
         return requestFuture
 
 
@@ -133,21 +148,7 @@ class WorkerProxy(WorkerInterface):
             requestFuture.set_exception(e)
         else:
             logger.info('Worker request sent')
-            # If we are expecting a response, we store our future for some time
-            if expectResponse:
-                assert requestId is not None
-                WorkerProxy._requestFutures[requestId] = requestFuture
-
-                # If our future is still stored after a while, remove it and
-                # set an error on it
-                # TODO: Remove timeout on successful response
-                def removeFuture():
-                    if requestId in WorkerProxy._requestFutures:
-                        logger.info('Worker request timed out')
-                        requestFuture.set_exception(ResponseTimeout())
-                        del WorkerProxy._requestFutures[requestId]
-                self._ioloop.add_timeout(timeout, removeFuture)
-            else:
+            if not expectResponse:
                 # Not expecting a response and the request has been sent, so
                 # resolve the request future
                 requestFuture.set_result(None)
