@@ -33,7 +33,7 @@ def exponentialBackoff(firstRetryDelay=1, maxDelay=32):
                 raise Timeout()
 
             # Override by minimum delay from argument, if any
-            minDelay = kwargs.get('minDelay', retryDelaySecs[0])
+            minDelay = kwargs.pop('minDelay', retryDelaySecs[0])
             if minDelay is None:
                 minDelay = retryDelaySecs[0]
             retryDelaySecs[0] = min(minDelay, retryDelaySecs[0])
