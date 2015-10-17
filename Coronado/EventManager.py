@@ -11,7 +11,7 @@ class EventManager(object):
         pass
 
 
-    def on(self, sourceId, eventType, listener, listenerId=None):
+    def on(self, eventType, listener, sourceId=None, listenerId=None):
         '''
         Listen for an event on the given source.
 

@@ -385,6 +385,7 @@ class GCMNotifier(Notifier):
             except tornado.httpclient.HTTPError as e:
                 logger.info('HTTP status code = %d', e.code)
                 if e.code == 400:
+                    logger.error(e.response.body)
                     raise BadRequest()
                 elif e.code == 401:
                     raise AuthenticationError()
