@@ -163,7 +163,7 @@ def startWorkers(numWorkers, *args, **kwargs):
         if 'serverProcess' in kwargs:
             processes.append(kwargs.pop('serverProcess'))
 
-        for i in xrange(numWorkers):
+        for i in range(numWorkers):
             p = multiprocessing.Process(
                     target=startApp, args=args, kwargs=kwargs)
             p.start()

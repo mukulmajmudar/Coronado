@@ -3,6 +3,7 @@ import string
 import tornado.concurrent
 
 from .Concurrent import when, transform
+import collections
 
 class ValidationError(Exception):
     invalidResults = None
@@ -75,7 +76,7 @@ class Validator(object):
 
         try:
             # Make sure validator is callable
-            if not callable(validator):
+            if not isinstance(validator, collections.Callable):
                 raise ValidationError('NoValidator', key)
 
             # Call validator

@@ -9,8 +9,8 @@ import time
 import importlib
 import tornado.ioloop
 import tornado.httpclient
-import MySQLdb
-from MySQLdb.cursors import DictCursor
+import pymysql
+from pymysql.cursors import DictCursor
 
 from . import RabbitMQ, EventManager, Testing
 from .Email import SendEmail
@@ -130,11 +130,11 @@ class Application(object):
                 urls.update(self.urlHandlers[apiVersion])
 
             versionUrls = self.urlHandlers[apiVersion]
-            for url, handlerClass in versionUrls.iteritems():
+            for url, handlerClass in list(versionUrls.items()):
                 urls['/v' + str(apiVersion) + url] = handlerClass
         logger.debug('URL mappings: %s', str(urls))
         urlHandlers = [mapping + (self.context,)
-                for mapping in zip(urls.keys(), urls.values())]
+                for mapping in zip(list(urls.keys()), list(urls.values()))]
 
         self.tornadoApp = tornado.web.Application(urlHandlers)
 
@@ -149,7 +149,7 @@ class Application(object):
             try:
                 cursor.execute('SELECT * FROM metadata WHERE attribute = %s',
                         ('version',))
-            except MySQLdb.ProgrammingError as e:
+            except pymysql.ProgrammingError as e:
                 # 1146 == table does not exist
                 if e.args[0] == 1146:
                     # Version 1 tables don't exist either, so it is most
@@ -200,7 +200,7 @@ class Application(object):
 
             # Convert to Tornado-style tuple
             workHandlers = [mapping + (self.context,)
-                    for mapping in zip(handlers.keys(), handlers.values())]
+                    for mapping in zip(list(handlers.keys()), list(handlers.values()))]
 
             # Create a worker
             worker = self.context['worker'] = classes['worker'](
@@ -331,7 +331,7 @@ class Application(object):
     def _getDbConnection(self):
         # Connect to MySQL
         mysqlArgs = self.context['mysql']
-        database = MySQLdb.connect(host=mysqlArgs['host'],
+        database = pymysql.connect(host=mysqlArgs['host'],
                 user=mysqlArgs['user'], passwd=mysqlArgs['password'],
                 db=mysqlArgs['dbName'], use_unicode=True, charset='utf8',
                 cursorclass=DictCursor)
@@ -357,7 +357,7 @@ class Application(object):
 
 
     def addToContextFlatten(self, attrKeys):
-        for attrType, keys in attrKeys.iteritems():
+        for attrType, keys in list(attrKeys.items()):
             for key in keys:
                 self.context.addFlattenedAttr(attrType, key)
 

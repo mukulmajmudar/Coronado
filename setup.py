@@ -9,14 +9,13 @@ setup(
     install_requires=
     [
         'tornado',
-        'MySQL-python',
+        'PyMySQL',
         'unittest2',
         'argparse',
         'argh',
         'argcomplete',
         'pika',
-        'python-dateutil',
-        'importlib'
+        'python-dateutil'
     ],
     author='Mukul Majmudar',
     author_email='mukul@curecompanion.com',

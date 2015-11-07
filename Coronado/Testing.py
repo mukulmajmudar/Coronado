@@ -11,7 +11,7 @@ from contextlib import closing
 import argparse
 import logging
 
-import MySQLdb
+import pymysql
 import tornado.testing
 
 from .HttpUtil import parseContentType
@@ -128,12 +128,12 @@ class AppTester(Scaffold):
             # Check for errors and failures
             if result.errors:
                 for error in result.errors:
-                    print 'Error:\n' + error[1]
+                    print(('Error:\n' + error[1]))
             if result.failures:
                 for failure in result.failures:
-                    print 'Failure:\n' + failure[1]
+                    print(('Failure:\n' + failure[1]))
             if not result.errors and not result.failures:
-                print 'All tests passed successfully. Congratulations!'
+                print('All tests passed successfully. Congratulations!')
 
         finally:
             # Destroy the app
@@ -221,12 +221,12 @@ def _installFixture(database, fixture, ignoreConflicts):
         logger.info('Installing table %s', tableName)
         for row in fixture[tableName]:
             query = 'INSERT INTO ' + tableName + ' (' \
-                    + ','.join(row.keys()) \
+                    + ','.join(list(row.keys())) \
                     + ') VALUES (' + '%s' + ',%s' * (len(row) -1) + ')'
             with closing(database.cursor()) as cursor:
                 try:
                     cursor.execute(query, tuple(row.values()))
-                except MySQLdb.IntegrityError:
+                except pymysql.IntegrityError:
                     if ignoreConflicts:
                         logger.info('Ignoring conflict in table %s', tableName)
                         continue
@@ -241,7 +241,7 @@ def installFixture(database, fixture, ignoreConflicts=False):
         _installFixture(database, fixture, ignoreConflicts)
     else:
         # Fixtures for multiple apps are given
-        for appName, fix in fixture.items():
+        for appName, fix in list(fixture.items()):
             if appName == 'self':
                 _installFixture(database, fix, ignoreConflicts)
             else:
@@ -252,9 +252,9 @@ def installFixture(database, fixture, ignoreConflicts=False):
                         delete=False)
                 json.dump(fix, f)
                 f.flush()
-                raw_input(('Please load the file "%s" into a test ' +
+                eval(input(('Please load the file "%s" into a test ' +
                     'instance of "%s". Press ENTER to continue.')
-                    % (f.name, appName))
+                    % (f.name, appName)))
 
 
 class FixtureMixin(_TestRoot):
@@ -344,7 +344,7 @@ def getInputSets(inputValues):
     dictionary.
     '''
 
-    keys = inputValues.keys()
+    keys = list(inputValues.keys())
 
     def buildInputSet(keyIdx, inputSet, invalidKeys, isValid):
         '''

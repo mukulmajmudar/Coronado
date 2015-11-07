@@ -1,29 +1,34 @@
 FROM centos:7
 
-RUN yum update -y && \
+RUN echo "timeout=5" >> /etc/yum.conf && \
+    yum update -y && \
     yum install -y epel-release
 
 RUN yum install -y \
     gcc \
-    mysql \
-    mysql-devel \
-    python-devel \
-    python-setuptools
+    make \
+    openssl \
+    openssl-devel \
+    zlib-devel && \
+        curl -O https://www.python.org/ftp/python/3.5.0/Python-3.5.0.tar.xz && \
+        tar xf Python-3.5.0.tar.xz && \
+        cd Python-3.5.0 && \
+        ./configure && \
+        make && \
+        make install
 
 # Install Coronado dependencies
-# (-Z flag because sometimes there were race conditions with the egg cache)
-RUN easy_install -Z \
+RUN pip3 install \
     argparse \
     argh \
     argcomplete \
-    importlib \
-    MySQL-python \
+    PyMySQL \
     pika \
     python-dateutil \
     tornado \
     unittest2
 
-RUN easy_install logilab-common==0.63.0 pylint
+RUN pip3 install logilab-common==0.63.0 pylint
 
 COPY . /root/Coronado
 WORKDIR /root/Coronado

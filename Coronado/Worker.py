@@ -22,8 +22,8 @@ class WorkerException(Exception):
     def __init__(self, message='', tag='', **kwargs):
         super(WorkerException, self).__init__(message)
         self.tag = tag
-        self.keys = kwargs.keys()
-        for key, value in kwargs.iteritems():
+        self.keys = list(kwargs.keys())
+        for key, value in list(kwargs.items()):
             if key == 'tag':
                 continue
             setattr(self, key, value)
@@ -295,7 +295,7 @@ class Worker(WorkerInterface):
                     if spec.regex.groupindex:
                         kwargs = dict(
                             (str(k), unquote(v))
-                            for (k, v) in match.groupdict().items())
+                            for (k, v) in list(match.groupdict().items()))
                     else:
                         args = [unquote(s) for s in match.groups()]
                 break

@@ -7,7 +7,7 @@ import json
 import time
 from datetime import datetime, timedelta
 import logging
-from Queue import Queue, Empty
+from queue import Queue, Empty
 
 import tornado.iostream
 from tornado.iostream import StreamClosedError
