@@ -110,7 +110,7 @@ class WorkerProxy(BaseWorkerProxy):
 
 class Worker(BaseWorker):
 
-    # pylint: disable=too-many-arguments
+    # pylint: disable=too-many-arguments,unused-argument
     def __init__(self, handlers, host, port, requestQueueName,
             ioloop=None, shutdownDelay=10.0, **kwargs):
         # Call parent

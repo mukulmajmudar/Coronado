@@ -11,9 +11,6 @@ from ..Concurrent import transform
 # Logger for this module
 logger = logging.getLogger(__name__)
 
-class ConnectionError(Exception):
-    pass
-
 class SimpleClient(object):
     '''
     A simplified RabbitMQ client.

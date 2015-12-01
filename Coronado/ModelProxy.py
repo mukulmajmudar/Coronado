@@ -1,7 +1,8 @@
 import json
 
-from Coronado.Concurrent import transform
 from tornado.ioloop import IOLoop
+
+from .Concurrent import transform
 
 class ModelProxy(dict):
     uri = None

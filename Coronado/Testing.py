@@ -1,9 +1,5 @@
 import sys
-# Import unittest2 for Python < 2.7, unittest otherwise
-if sys.version_info[0] <= 2 and sys.version_info[1] < 7:
-    import unittest2 as unittest
-else:
-    import unittest
+import unittest
 import os
 import json
 import tempfile
@@ -252,9 +248,10 @@ def installFixture(database, fixture, ignoreConflicts=False):
                         delete=False)
                 json.dump(fix, f)
                 f.flush()
-                eval(input(('Please load the file "%s" into a test ' +
+                # pylint: disable=bad-builtin
+                input(('Please load the file "%s" into a test ' +
                     'instance of "%s". Press ENTER to continue.')
-                    % (f.name, appName)))
+                    % (f.name, appName))
 
 
 class FixtureMixin(_TestRoot):

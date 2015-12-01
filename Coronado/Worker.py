@@ -135,7 +135,7 @@ class WorkerProxy(WorkerInterface):
         raise NotImplementedError()
 
 
-    # pylint: disable=too-many-arguments
+    # pylint: disable=too-many-arguments,unused-argument
     def _onRequestSent(self, requestFuture, expectResponse, requestId,
             timeout, implFuture):
         '''

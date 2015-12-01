@@ -200,7 +200,8 @@ class Application(object):
 
             # Convert to Tornado-style tuple
             workHandlers = [mapping + (self.context,)
-                    for mapping in zip(list(handlers.keys()), list(handlers.values()))]
+                    for mapping in zip(list(handlers.keys()),
+                        list(handlers.values()))]
 
             # Create a worker
             worker = self.context['worker'] = classes['worker'](

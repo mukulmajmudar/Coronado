@@ -7,5 +7,5 @@ class UnexpectedResult(Exception):
 class MissingArgument(Exception):
     pass
 
-class TimeoutError(Exception):
+class TimedOut(Exception):
     pass

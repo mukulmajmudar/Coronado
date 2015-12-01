@@ -1,0 +1,9 @@
+# Pre-commit hook passing files through pylint
+
+echo "Running pylint, please wait..."
+if ./docker-pylint.sh Coronado; then
+    echo "pylint passed"
+else
+    echo "pylint failed"
+    exit 1
+fi

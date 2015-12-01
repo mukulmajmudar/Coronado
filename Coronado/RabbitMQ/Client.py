@@ -12,9 +12,6 @@ from ..Concurrent import transform
 # Logger for this module
 logger = logging.getLogger(__name__)
 
-class ConnectionError(Exception):
-    pass
-
 
 def connected(method):
     '''

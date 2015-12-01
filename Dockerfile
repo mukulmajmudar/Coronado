@@ -28,8 +28,13 @@ RUN pip3 install \
     tornado \
     unittest2
 
-RUN pip3 install logilab-common==0.63.0 pylint
+# Once Pylint 1.5.0 is released, replace this with "pip3 install pylint"
+# https://bitbucket.org/logilab/pylint/issues/643/attributeerror-call-object-has-no
+RUN yum install -y hg && \
+    pip3 install \
+        hg+https://bitbucket.org/logilab/astroid@1.4.0 \
+        hg+https://bitbucket.org/logilab/pylint@1.5.0
 
-COPY . /root/Coronado
 WORKDIR /root/Coronado
 ENTRYPOINT ["./entrypoint.sh"]
+COPY . /root/Coronado

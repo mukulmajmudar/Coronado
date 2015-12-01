@@ -1,8 +1,9 @@
 import json
 
+from tornado.ioloop import IOLoop
+
 from Coronado.Concurrent import transform
 from Coronado.ModelProxy import ModelProxy
-from tornado.ioloop import IOLoop
 
 class CollectionProxy(object):
     uri = None
