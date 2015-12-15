@@ -90,7 +90,7 @@ class WorkerProxy(WorkerInterface):
         # Convert dictionaries and lists to JSON if content type is JSON
         if (isinstance(body, dict) or isinstance(body, list)) \
                 and contentType == 'application/json':
-            body = json.dumps(body, encoding=contentEncoding)
+            body = json.dumps(body).encode(contentEncoding)
 
         # If we are expecting a response, generate a request ID
         requestId = expectResponse and uuid4().hex or None
@@ -170,7 +170,7 @@ class WorkerProxy(WorkerInterface):
         else:
             # Convert body to dictionary from JSON if content type is JSON
             if contentType == 'application/json':
-                response = json.loads(body, encoding=contentEncoding)
+                response = json.loads(body.decode(contentEncoding))
 
                 # Set exception if error returned
                 if isinstance(response, dict):
@@ -231,7 +231,7 @@ class Worker(WorkerInterface):
         try:
             # Convert body to dictionary from JSON if content type is JSON
             if contentType == 'application/json':
-                body = json.loads(body, encoding=contentEncoding)
+                body = json.loads(body.decode(contentEncoding))
 
             # Find handler for the given work tag
             handler, args, kwargs = self._findHandler(
@@ -253,7 +253,8 @@ class Worker(WorkerInterface):
                     response['tag'] = e.tag
                     response.update(e.getData())
 
-                self.respond(requestId, replyTo, json.dumps(response),
+                self.respond(requestId, replyTo,
+                        json.dumps(response).encode('utf-8'),
                         'application/json', 'utf-8')
         else:
             # If no request ID, don't do anything
@@ -315,16 +316,17 @@ class Worker(WorkerInterface):
                 response['tag'] = e.tag
                 response.update(e.getData())
 
-            self.respond(requestId, replyTo, json.dumps(response),
+            self.respond(requestId, replyTo,
+                    json.dumps(response).encode('utf-8'),
                     'application/json', 'utf-8')
         else:
             # Respond with the worker's result
             if result is None or isinstance(result, dict) \
                     or isinstance(result, list):
                 try:
-                    result = json.dumps(result, encoding='utf-8')
+                    result = json.dumps(result).encode('utf-8')
                 except Exception as e:  # pylint: disable=broad-except
-                    result = json.dumps(dict(error=str(e)))
+                    result = json.dumps(dict(error=str(e))).encode('utf-8')
                 contentType = 'application/json'
                 contentEncoding = 'utf-8'
             elif isinstance(result, tuple):
@@ -334,8 +336,8 @@ class Worker(WorkerInterface):
                 logging.warning('Result value of type %s not supported',
                         str(type(result)))
                 self.respond(requestId, replyTo, json.dumps(
-                    dict(error='Worker error: unsupported result type')),
-                    'application/json', 'utf-8')
+                    dict(error='Worker error: unsupported result type')).encode(
+                        'utf-8'), 'application/json', 'utf-8')
                 return
 
             self.respond(requestId, replyTo, result, contentType,

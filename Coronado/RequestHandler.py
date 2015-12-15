@@ -66,7 +66,7 @@ class RequestHandler(tornado.web.RequestHandler):
 
             if 'authTokenHeaderName' in self.context:
                 self.set_header('Access-Control-Expose-Headers',
-                        self.context['authTokenHeaderName'])
+                        self.context['authTokenHeaderName'] + ', Etag')
 
 
     def prepare(self):
@@ -135,7 +135,8 @@ def withJsonBody(attrName='jsonBody', charset='UTF-8'):
             if contentType != 'application/json' or reqCharset != charset:
                 raise tornado.web.HTTPError(415)
             try:
-                setattr(self, attrName, json.loads(self.request.body))
+                setattr(self, attrName, json.loads(
+                    self.request.body.decode(encoding='UTF-8')))
             except ValueError:
                 raise tornado.web.HTTPError(415)
             else:

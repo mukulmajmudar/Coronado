@@ -1,5 +1,6 @@
 *.pyc
 *.swp
+*.swo
 build
 Coronado.egg-info
 dist

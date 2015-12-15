@@ -86,7 +86,7 @@ class EventManager(BaseEventManager):
         contentType = kwargs.pop('contentType', 'application/json')
         contentEncoding = kwargs.pop('contentEncoding', 'utf-8')
         body = contentType == 'application/json' and \
-                json.dumps(kwargs, encoding=contentEncoding) or \
+                json.dumps(kwargs).encode(contentEncoding) or \
                 kwargs['body']
 
         # If the key contains dots, publish to the topic exchange, otherwise
@@ -109,7 +109,7 @@ class EventManager(BaseEventManager):
                 properties.content_encoding
 
         if contentType == 'application/json':
-            kwargs = json.loads(body, encoding=contentEncoding)
+            kwargs = json.loads(body.decode(contentEncoding))
 
             # Call onEvent
             self._onEvent(consumerTag, **kwargs)

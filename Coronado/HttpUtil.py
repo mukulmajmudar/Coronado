@@ -1,4 +1,3 @@
-import string
 
 def parseContentType(contentType):
     '''
@@ -9,7 +8,7 @@ def parseContentType(contentType):
         return None, None
 
     parts = contentType.split(';')
-    ctype = string.lower(parts[0].strip())
+    ctype = parts[0].strip().lower()
     charset = None
     if len(parts) == 1:
         charset = 'ISO-8859-1'
@@ -20,4 +19,4 @@ def parseContentType(contentType):
             charset = 'ISO-8859-1'
         else:
             charset = attributes[pos + len('charset='):]
-    return ctype, string.upper(charset.strip())
+    return ctype, charset.strip().upper()
