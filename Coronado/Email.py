@@ -77,6 +77,6 @@ class SendEmail(WorkHandler):
             # Send the message
             logger.info('Sending email to %s', message['recipient'])
             s.sendmail(smtpArgs['email'],
-                    message['recipient'], emailMsg.as_string())
+                    message['recipient'], emailMsg)
         finally:
             s.quit()
