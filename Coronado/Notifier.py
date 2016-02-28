@@ -145,7 +145,7 @@ class APNsNotifier(APNsConnector):
     def send(self, notification):
         def _send():
             # Make sure payload is not too long
-            payload = json.dumps(notification['payload'])
+            payload = json.dumps(notification['payload']).encode('utf8')
             if len(payload) > 256:
                 raise PayloadTooLong()
 
