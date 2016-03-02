@@ -394,7 +394,7 @@ class GCMNotifier(Notifier):
                 else:
                     raise RequestError(code=e.code)
             else:
-                jsonResponse = json.loads(response.body)
+                jsonResponse = json.loads(response.body.decode('utf8'))
 
                 # If both failure and canonical_ids are 0, then the
                 # request was successful
