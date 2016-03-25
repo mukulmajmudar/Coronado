@@ -35,7 +35,7 @@ class SendEmail(WorkHandler):
         emailMsg = text is not None and MIMEText(text) \
                 or MIMEMultipart('alternative')
         emailMsg['Subject'] = message['subject']
-        emailMsg['From'] = smtpArgs['email']
+        emailMsg['From'] = message.get('sender', smtpArgs['email'])
         emailMsg['To'] = message['recipient']
 
         if textFile is not None:
