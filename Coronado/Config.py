@@ -15,6 +15,7 @@ class Config(dict):
             'appRoot',
             'errorEmailRecipient',
             'errorEmailSubject',
+            'emailSender',
             'emailWorkTag',
             'eventManager',
             'mysql',
@@ -141,6 +142,8 @@ class Config(dict):
     def _getMySchemaFilePath(self):
         raise NotImplementedError()
 
+    def _getEmailSender(self):
+        return ''
 
     def _getPort(self):
         '''

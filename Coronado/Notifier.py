@@ -53,6 +53,12 @@ class MissingRegistration(Exception):
 
 class Notifier(object):
 
+    def start(self, context):
+        pass
+
+    def destroy(self, context):
+        pass
+
     def send(self, notification):
         raise NotImplementedError()
 
@@ -116,7 +122,7 @@ class APNsConnector(object):
         return self._connectFuture
 
 
-    def shutdown(self):
+    def destroy(self):
         if self._iostream is not None:
             self._iostream.close()
 
@@ -130,7 +136,7 @@ class APNsConnector(object):
     _connectFuture = None
 
 
-class APNsNotifier(APNsConnector):
+class APNsNotifier(Notifier, APNsConnector):
     sentQueue = None
     timeoutHandles = None
     removeToken = None

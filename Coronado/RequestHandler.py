@@ -98,6 +98,7 @@ class RequestHandler(tornado.web.RequestHandler):
         # Send email to the configured recipient
         self._worker.request(self.context['emailWorkTag'],
         {
+            'sender': self.context['emailSender'],
             'subject': self.context['errorEmailSubject'],
             'recipient': self.context['errorEmailRecipient'],
             'text': tbString
