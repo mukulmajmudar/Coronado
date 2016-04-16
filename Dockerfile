@@ -22,7 +22,6 @@ RUN pip3 install \
     argparse \
     argh \
     argcomplete \
-    PyMySQL \
     pika \
     python-dateutil \
     tornado \

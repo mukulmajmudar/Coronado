@@ -3,7 +3,6 @@ import traceback
 
 import tornado.websocket
 
-from .RequestHandler import ReqHandlerCfgError
 from .Context import Context
 
 # pylint: disable=abstract-method
@@ -28,16 +27,6 @@ class WebSocketHandler(tornado.websocket.WebSocketHandler):
 
         # Update context with arguments
         self.context.update(kwargs)
-
-        # Validate context
-        if self.context['sendEmailOnError']:
-            if self.context['errorEmailRecipient'] is None:
-                raise ReqHandlerCfgError('errorEmailRecipient argument is ' +
-                    'required in order to send errors')
-
-            if self.context['worker'] is None:
-                raise ReqHandlerCfgError('A worker is required in order to ' +
-                    'send error emails')
 
         self.context.flattenOnto(self)
 

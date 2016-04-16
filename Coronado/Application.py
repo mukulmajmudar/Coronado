@@ -80,7 +80,6 @@ class Application(object):
             'public':
             [
                 'ioloop',
-                'database',
                 'httpClient',
                 'getNewDbConnection'
             ],
@@ -88,8 +87,6 @@ class Application(object):
             'non-public': ['ioloop', 'database', 'httpClient']
         })
 
-        # Check Database schema version matches what is expected
-        self.checkDbSchemaVersion()
 
         # Setup eventManager if configured
         self.setupEventManager()
