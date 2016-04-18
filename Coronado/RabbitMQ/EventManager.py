@@ -23,7 +23,7 @@ class EventManager(BaseEventManager):
         self.client = Client(host, port, self._onMessage, ioloop)
 
 
-    def setup(self):
+    def start(self):
         if self.triggerCapable:
             # Declare direct and topic exchanges
             return when(self.client.declareExchange(self.topicExName, 'topic'),

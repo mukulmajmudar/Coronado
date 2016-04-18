@@ -1,7 +1,6 @@
 #! ./bin/python
 import sys
 import argparse
-import argh
 import traceback
 import multiprocessing
 from functools import partial
@@ -10,6 +9,8 @@ import os
 import json
 import logging
 
+import argh
+
 sys.path.append(os.getcwd())
 
 from Config import config
@@ -17,9 +18,9 @@ import Coronado
 
 logger = logging.getLogger(__name__)
 
-def startInTestMode(fixture, comprehensive, server, workers, numWorkers, 
+'''
+def startInTestMode(fixture, comprehensive, server, workers, numWorkers,
         *args, **kwargs):
-    global config
     scaffold = None
     try:
         testsMod = __import__(config['testPkg'].__name__ + '.TestConfig')
@@ -75,7 +76,7 @@ def startInTestMode(fixture, comprehensive, server, workers, numWorkers,
             logger.info('Starting web server and workers...')
 
             # Start web server
-            p = multiprocessing.Process(target=startTestApp, 
+            p = multiprocessing.Process(target=startTestApp,
                     args=(fixture, sys.stdin.fileno()))
             p.start()
 
@@ -86,23 +87,24 @@ def startInTestMode(fixture, comprehensive, server, workers, numWorkers,
 
     except KeyboardInterrupt:
         pass
-    except Exception as e:
+    except Exception:
         raise argh.CommandError(traceback.format_exc())
     finally:
         if scaffold is not None:
             scaffold.destroy()
+'''
 
+# pylint: disable=unused-argument
 def onSigTerm(app, signum, frame):
     logger.info('Caught signal %d, shutting down.', signum)
-    app.destroyApp()
+    app._destroy()
 
 
 def startApp(workerMode=False, *args, **kwargs):
-    global config
     app = None
     try:
         app = config['appClass'](config, workerMode, *args, **kwargs)
-        app.prepare()
+        app._start()
 
         # Install SIGINT and SIGTERM handler
         signal.signal(signal.SIGINT, partial(onSigTerm, app))
@@ -110,14 +112,11 @@ def startApp(workerMode=False, *args, **kwargs):
 
         logger.info(workerMode and 'Started worker' or 'Started web server')
 
-        # Start async event loop
-        app.startEventLoop()
-
     except Exception as e:
         raise argh.CommandError(traceback.format_exc())
     finally:
         if app is not None:
-            app.destroyApp()
+            app._destroy()
 
 
 def onSigForChildren(processes, signum, frame):

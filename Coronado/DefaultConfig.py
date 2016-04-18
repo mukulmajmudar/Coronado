@@ -71,6 +71,8 @@ class DefaultConfig(Config):
         '''
         raise NotImplementedError()
 
+    def _getEmailSender(self):
+        return self['admin']['email']
 
     def _getErrorEmailRecipient(self):
         return self['admin']['email']

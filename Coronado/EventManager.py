@@ -7,7 +7,7 @@ class EventManager(object):
         self.ioloop = ioloop is not None and ioloop or IOLoop.current()
         self.messageHandlers = {}
 
-    def setup(self):
+    def start(self):
         pass
 
 

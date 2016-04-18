@@ -31,18 +31,16 @@ class Application(object):
     context = None
     tornadoApp = None
     workHandlers = None
-    xheaders = None
     started = False
 
-    def __init__(self, config, workerMode=False, xheaders=True):
+    def __init__(self, config, workerMode=False):
         self.config = config
         self._workerMode = workerMode
         self._destroyed = False
         self.workHandlers = {}
-        self.xheaders = xheaders
 
 
-    def prepare(self, context=None):
+    def _start(self, context=None):
         if context is None:
             context = {}
 
@@ -65,47 +63,37 @@ class Application(object):
         if 'ioloop' not in self.context:
             self.context['ioloop'] = tornado.ioloop.IOLoop.instance()
 
-        # Set up app plugins
+        # Start eventManager if configured
+        self.startEventManager()
+
+        # Start app plugins
         self.context['appPlugins'] = {}
         for plugin in self.context['plugins']:
             appPluginClass = getattr(plugin, 'AppPlugin', False)
             if not appPluginClass:
                 continue
             appPlugin = appPluginClass()
-            appPlugin.setup(self, self.context)
+            appPlugin.start(self, self.context)
             self.context['appPlugins'][appPlugin.pluginId] = appPlugin
 
         self.addToContextFlatten(
         {
-            'public':
-            [
-                'ioloop',
-                'httpClient',
-                'getNewDbConnection'
-            ],
-            # Some old clients need non-public versions too
-            'non-public': ['ioloop', 'database', 'httpClient']
+            'public': ['ioloop']
         })
 
+        # Start worker if configured
+        self.startWorker()
 
-        # Setup eventManager if configured
-        self.setupEventManager()
+        # Call sub-class specific start()
+        self.start()
 
-        # Call API-specific setup functions
-        self.setup()
+        self.started = True
 
-        # Setup worker if configured
-        self.setupWorker()
-
-
-    def setup(self):
-        '''
-        Set-up-time hook for sub-classes.
-        '''
-        pass
+        # Start event loop
+        self.context['ioloop'].start()
 
 
-    def setupWorker(self):
+    def startWorker(self):
         worker = self.context.get('worker')
         if not worker:
             return
@@ -113,7 +101,7 @@ class Application(object):
         workerType = worker.pop('type')
         classes = workerClasses[workerType]
 
-        # Setup a worker or proxy based on mode
+        # Start a worker or proxy based on mode
         if self._workerMode:
             # Get app-specific work handlers
             handlers = self.workHandlers
@@ -147,7 +135,7 @@ class Application(object):
         })
 
 
-    def setupEventManager(self):
+    def startEventManager(self):
         eventManager = self.context.get('eventManager')
         if not eventManager:
             return
@@ -157,23 +145,12 @@ class Application(object):
         eventManager = self.context['eventManager'] = \
                 EventManager.make(eventManagerType, **eventManager)
 
-        self.context['ioloop'].run_sync(eventManager.setup)
+        self.context['ioloop'].run_sync(eventManager.start)
 
         self.addToContextFlatten(
         {
-            'public': ['eventManager'],
+            'public': ['eventManager']
         })
-
-
-    def startEventLoop(self):
-        # Start app plugins
-        for appPlugin in self.context['appPlugins']:
-            appPlugin.start(self, self.context)
-
-        self.start()
-        self.started = True
-
-        self.context['ioloop'].start()
 
 
     def start(self):
@@ -181,17 +158,6 @@ class Application(object):
         Start-time hook for sub-classes.
         '''
         pass
-
-
-    def stop(self):
-        '''
-        Stop-time hook for sub-classes.
-        '''
-        pass
-
-
-    def stopEventLoop(self):
-        self.context['ioloop'].stop()
 
 
     def addWorkHandlers(self, handlers):
@@ -205,7 +171,7 @@ class Application(object):
         return self.addWorkHandlers(handlers)
 
 
-    def destroyApp(self):
+    def _destroy(self):
         # If already destroyed, do nothing
         if not self.started or self._destroyed:
             return
@@ -214,7 +180,7 @@ class Application(object):
         self.destroy()
 
         # Destroy app plugins
-        for appPlugin in self.context['appPlugins']:
+        for appPlugin in self.context['appPlugins'].values():
             appPlugin.destroy(self, self.context)
 
         if not self._workerMode:
@@ -233,7 +199,7 @@ class Application(object):
                     or 'Server application'
 
             def stop():
-                self.stopEventLoop()
+                self.context['ioloop'].stop()
                 self._destroyed = True
                 logger.info('%s has been shut down.', label)
 

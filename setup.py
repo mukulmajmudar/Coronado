@@ -1,5 +1,4 @@
 from setuptools import setup
-import os
 
 setup(
     name='Coronado',
@@ -18,4 +17,4 @@ setup(
     ],
     author='Mukul Majmudar',
     author_email='mukul@curecompanion.com',
-    description='Helper library for Tornado applications')
+    description='Lifecycle and plugin framework for Tornado')
