@@ -19,20 +19,13 @@ RUN yum install -y \
 
 # Install Coronado dependencies
 RUN pip3 install \
-    argparse \
-    argh \
     argcomplete \
-    pika \
+    argh \
+    argparse \
     python-dateutil \
-    tornado \
-    unittest2
+    tornado>=4.3
 
-# Once Pylint 1.5.0 is released, replace this with "pip3 install pylint"
-# https://bitbucket.org/logilab/pylint/issues/643/attributeerror-call-object-has-no
-RUN yum install -y hg && \
-    pip3 install \
-        hg+https://bitbucket.org/logilab/astroid@1.4.0 \
-        hg+https://bitbucket.org/logilab/pylint@1.5.0
+RUN pip3 install pylint>=1.5.0
 
 WORKDIR /root/Coronado
 ENTRYPOINT ["./entrypoint.sh"]

@@ -5,6 +5,12 @@ class AppPlugin(object):
     def destroy(self, application, context):
         pass
 
+    def getId(self):
+        '''
+        Get ID of the plugin.
+        '''
+        raise NotImplementedError()
+
 
 class CommandLinePlugin(object):
 

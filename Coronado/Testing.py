@@ -7,7 +7,6 @@ import logging
 
 import tornado.testing
 
-from .HttpUtil import parseContentType
 from .Exceptions import IllegalArgument
 
 logger = logging.getLogger(__name__)
@@ -191,14 +190,6 @@ class TestCase(TestRoot):
 
     def get_app(self):
         return self._context['tornadoApp']
-
-
-    def _assertJsonResponse(self, httpResponse, charset='UTF-8'):
-        contentType, reqCharset = parseContentType(
-                httpResponse.headers.get('Content-Type'))
-        self.assertEqual(contentType, 'application/json')
-        self.assertEqual(reqCharset, charset)
-        return json.loads(httpResponse.body)
 
 
     _context = None

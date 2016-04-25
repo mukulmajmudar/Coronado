@@ -2,204 +2,58 @@
 import sys
 import argparse
 import traceback
-import multiprocessing
+import importlib.util
 from functools import partial
 import signal
 import os
-import json
 import logging
 
 import argh
 
 sys.path.append(os.getcwd())
 
-from Config import config
 import Coronado
+from Coronado.Application import Application
 
 logger = logging.getLogger(__name__)
 
-'''
-def startInTestMode(fixture, comprehensive, server, workers, numWorkers,
-        *args, **kwargs):
-    scaffold = None
-    try:
-        testsMod = __import__(config['testPkg'].__name__ + '.TestConfig')
-        config = testsMod.TestConfig.config
+config = None
 
-        def startTestApp(fixture, stdinFileNo=None):
-            if stdinFileNo is not None:
-                sys.stdin = os.fdopen(stdinFileNo)
-
-            # Setup a testing scaffold
-            scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
-                    *args, **kwargs)
-            scaffold.setup()
-            app = scaffold.app
-
-            # Load test fixture if any
-            if fixture is not None:
-                fixture = json.load(open(fixture))
-                Coronado.Testing.installFixture(
-                        app.context['database'], fixture)
-
-            # Install SIGTERM handler
-            signal.signal(signal.SIGTERM, partial(onSigTerm, scaffold))
-
-            # Start listening for requests
-            scaffold.app.startListening()
-
-            logger.info('Started web server')
-
-            # Start async event loop
-            scaffold.app.startEventLoop()
-
-        if workers:
-            logger.info('Starting workers...')
-
-            # Setup a testing scaffold
-            scaffold = Coronado.Testing.Scaffold(config, config['appClass'],
-                    *args, **kwargs)
-            scaffold.setup()
-            app = scaffold.app
-
-            # Load test fixture if any
-            if fixture is not None:
-                fixture = json.load(open(fixture))
-                Coronado.Testing.installFixture(
-                        app.context['database'], fixture)
-
-            startWorkers(numWorkers, *args, **kwargs)
-        elif server:
-            logger.info('Starting web server...')
-            startTestApp(fixture)
-        elif comprehensive:
-            logger.info('Starting web server and workers...')
-
-            # Start web server
-            p = multiprocessing.Process(target=startTestApp,
-                    args=(fixture, sys.stdin.fileno()))
-            p.start()
-
-            # Start workers
-            startWorkers(numWorkers, *args, **kwargs)
-
-            p.join()
-
-    except KeyboardInterrupt:
-        pass
-    except Exception:
-        raise argh.CommandError(traceback.format_exc())
-    finally:
-        if scaffold is not None:
-            scaffold.destroy()
-'''
-
-# pylint: disable=unused-argument
+# pylint: disable=all
 def onSigTerm(app, signum, frame):
     logger.info('Caught signal %d, shutting down.', signum)
     app._destroy()
 
 
-def startApp(workerMode=False, *args, **kwargs):
+@argh.arg('-l', '--logLevel',
+        help='one of "debug", "info", "warning", "error", and "critical"')
+@argh.arg('--logFormat',
+        help='Python-like log format (see Python docs for details)')
+def start(logLevel='warning',
+        logFormat='%(levelname)s:%(name)s (at %(asctime)s): %(message)s',
+        *args, **kwargs):
+    '''
+    Start the application.
+    '''
+    Coronado.configureLogging(level=logLevel, format=logFormat)
+
     app = None
     try:
-        app = config['appClass'](config, workerMode, *args, **kwargs)
-        app._start()
+        app = Application(config, *args, **kwargs)
 
         # Install SIGINT and SIGTERM handler
         signal.signal(signal.SIGINT, partial(onSigTerm, app))
         signal.signal(signal.SIGTERM, partial(onSigTerm, app))
 
-        logger.info(workerMode and 'Started worker' or 'Started web server')
+        logger.info('Starting application')
+        app._start()
 
-    except Exception as e:
+    except Exception:
         raise argh.CommandError(traceback.format_exc())
     finally:
         if app is not None:
             app._destroy()
 
-
-def onSigForChildren(processes, signum, frame):
-    logger.info('Caught signal %d, shutting down all children.', signum)
-    for p in processes:
-        p.terminate()
-
-
-def startWorkers(numWorkers, *args, **kwargs):
-    args = tuple([True] + list(args))
-    processes = []
-    if numWorkers == 1 and 'serverProcess' not in kwargs:
-        # This is just a single-worker run - run in this thread to allow
-        # debugging
-        startApp(*args, **kwargs)
-    else:
-        if 'serverProcess' in kwargs:
-            processes.append(kwargs.pop('serverProcess'))
-
-        for i in range(numWorkers):
-            p = multiprocessing.Process(
-                    target=startApp, args=args, kwargs=kwargs)
-            p.start()
-            processes.append(p)
-
-        # Install SIGTERM handler that terminates all child processes
-        signal.signal(signal.SIGINT, partial(onSigForChildren, processes))
-        signal.signal(signal.SIGTERM, partial(onSigForChildren, processes))
-
-        # Wait for children to exit
-        for p in processes:
-            p.join()
-
-
-def startComprehensive(numWorkers, *args, **kwargs):
-    # Start web server
-    p = multiprocessing.Process(target=startApp, args=args, kwargs=kwargs)
-    p.start()
-
-    # Start workers
-    kwargs['serverProcess'] = p
-    startWorkers(numWorkers, *args, **kwargs)
-
-
-
-@argh.arg('-c', '--comprehensive', help='start webserver and workers')
-@argh.arg('-s', '--server', help='start web server only')
-@argh.arg('-w', '--workers', help='start workers only')
-@argh.arg('-n', '--numWorkers', help='number of workers')
-@argh.arg('-t', '--test', help='start web server in test mode')
-@argh.arg('-f', '--fixture', help='fixture file for test mode')
-@argh.arg('-d', '--daemon', help='daemon mode')
-@argh.arg('-l', '--logLevel', 
-        help='one of "debug", "info", "warning", "error", and "critical"')
-@argh.arg('--logFormat', 
-        help='Python-like log format (see Python docs for details)')
-def start(comprehensive=True, server=False, workers=False, 
-        numWorkers=multiprocessing.cpu_count(),
-        test=False, fixture=None, daemon=False, 
-        logLevel='warning', 
-        logFormat='%(levelname)s:%(name)s (at %(asctime)s): %(message)s',
-        *args, **kwargs):
-    '''
-    Start the application. By default, comprehensive mode is turned on.
-    '''
-    if daemon:
-        yield 'Daemon mode is not available yet, starting in foreground...'
-
-    Coronado.configureLogging(level=logLevel, format=logFormat)
-
-    if test:
-        startInTestMode(fixture, comprehensive, server, workers, numWorkers, 
-                *args, **kwargs)
-    elif workers:
-        logger.info('Starting workers...')
-        startWorkers(numWorkers, *args, **kwargs)
-    elif server:
-        logger.info('Starting web server...')
-        startApp(*args, **kwargs)
-    elif comprehensive:
-        logger.info('Starting web server and workers...')
-        startComprehensive(numWorkers, *args, **kwargs)
-    
 
 def main():
     parser = argparse.ArgumentParser(description=config['appName'])
@@ -230,4 +84,23 @@ def main():
 
 
 if __name__ == '__main__':
+    configFilePath = None
+    if len(sys.argv) > 1:
+        configFilePath = sys.argv[1]
+        if configFilePath.endswith('.py'):
+            del sys.argv[1]
+
+    # Default config file is called "Config.py"
+    if configFilePath is None or not configFilePath.endswith('.py'):
+        configFilePath = 'Config.py'
+
+    # Import config file
+    if not os.path.exists(configFilePath):
+        sys.stderr.write('Config file ' + configFilePath + ' does not exist.\n')
+        sys.exit(1)
+    spec = importlib.util.spec_from_file_location('module.name', configFilePath)
+    configMod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(configMod)
+    config = configMod.config
+
     main()

@@ -1,2 +1,0 @@
-class CoronadoError(Exception):
-    pass
