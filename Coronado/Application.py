@@ -1,6 +1,7 @@
 import logging
 import time
 import collections
+import functools
 
 import tornado.ioloop
 
@@ -19,7 +20,6 @@ class Application(object):
 
     config = None
     context = None
-    tornadoApp = None
     started = False
 
     def __init__(self, config):
@@ -27,15 +27,16 @@ class Application(object):
         self._destroyed = False
 
 
-    def _start(self, context=None):
-        if context is None:
-            context = {}
+    # pylint: disable=unused-argument
+    def _start(self, *args, **kwargs):
+        context = kwargs.pop('context', {})
 
         # Initialize context to be a copy of the configuration
         self.context = self.config.copy()
 
         # Override with arguments, if any
         self.context.update(context)
+        self.context.update(kwargs)
 
         # Assign default IOLoop instance
         if 'ioloop' not in self.context:
@@ -58,20 +59,17 @@ class Application(object):
         # Add ioloop as a shortcut
         self.context['shortcutAttrs'].append('ioloop')
 
-        # Call sub-class specific start()
-        self.start()
+        # Call app-specific start()
+        startFn = getattr(self.context['appPackage'], 'start', False)
+        if startFn:
+            self.context['ioloop'].run_sync(
+                    functools.partial(startFn, self.context))
 
         self.started = True
 
         # Start event loop
-        self.context['ioloop'].start()
-
-
-    def start(self):
-        '''
-        Start-time hook for sub-classes.
-        '''
-        pass
+        if self.context['startEventLoop']:
+            self.context['ioloop'].start()
 
 
     def _destroy(self):
@@ -79,8 +77,10 @@ class Application(object):
         if not self.started or self._destroyed:
             return
 
-        # Sub-class destroy
-        self.destroy()
+        # Call app-specific destroy()
+        destroyFn = getattr(self.context['appPackage'], 'destroy', False)
+        if destroyFn:
+            destroyFn()
 
         # Destroy app plugins
         pluginFutures = []
@@ -89,8 +89,9 @@ class Application(object):
 
         def onPluginsDestroyed(futuresFuture):
             futures = futuresFuture.result()
-            for f in futures:
-                f.result()
+            if isinstance(futures, list):
+                for f in futures:
+                    f.result()
 
             # Stop event loop after a delay
             delaySeconds = self.context['shutdownDelay']
@@ -106,13 +107,6 @@ class Application(object):
 
         self.context['ioloop'].add_future(when(*pluginFutures),
                 onPluginsDestroyed)
-
-
-    def destroy(self):
-        '''
-        Destroy-time hook for sub-classes.
-        '''
-        pass
 
 
     _destroyed = None

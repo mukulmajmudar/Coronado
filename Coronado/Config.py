@@ -4,7 +4,7 @@ class Config(dict):
         for key in keys:
             self[key] = getattr(self, '_get' + key[0].upper() + key[1:])()
 
-        super(Config, self).__init__()
+        super().__init__()
         self.validate()
 
     def validate(self):

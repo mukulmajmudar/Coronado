@@ -39,14 +39,14 @@ def start(logLevel='warning',
 
     app = None
     try:
-        app = Application(config, *args, **kwargs)
+        app = Application(config)
 
         # Install SIGINT and SIGTERM handler
         signal.signal(signal.SIGINT, partial(onSigTerm, app))
         signal.signal(signal.SIGTERM, partial(onSigTerm, app))
 
         logger.info('Starting application')
-        app._start()
+        app._start(*args, **kwargs)
 
     except Exception:
         raise argh.CommandError(traceback.format_exc())

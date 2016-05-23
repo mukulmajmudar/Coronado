@@ -2,14 +2,18 @@ from .Config import Config
 
 class DefaultConfig(Config):
 
-    def __init__(self, keys):
-        super(DefaultConfig, self).__init__(
+    def __init__(self, keys=None):
+        if keys is None:
+            keys = []
+
+        super().__init__(
         [
             'appName',
             'appPackage',
             'appRoot',
             'plugins',
             'shutdownDelay',
+            'startEventLoop',
             'testPkg'
         ] + keys)
 
@@ -38,6 +42,10 @@ class DefaultConfig(Config):
 
     def _getShutdownDelay(self):
         return 5.0
+
+
+    def _getStartEventLoop(self):
+        return True
 
 
     def _getTestPkg(self):
