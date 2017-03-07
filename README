@@ -1,6 +1,0 @@
-This is a library project, to be imported and used by other applications. 
-
-If you want to run pylint on the project, run the following commands first:
-
-$ virtualenv .
-$ ./bin/pip install -r requirements.txt

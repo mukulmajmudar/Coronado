@@ -1,8 +1,14 @@
 class AppPlugin(object):
-    def start(self, application, context):
+    def start(self, context):
+        '''
+        Start the plugin. Can be a coroutine.
+        '''
         pass
 
-    def destroy(self, application, context):
+    def destroy(self, context):
+        '''
+        Destroy the plugin. Can be a coroutine.
+        '''
         pass
 
     def getId(self):

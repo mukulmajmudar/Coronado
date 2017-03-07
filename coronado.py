@@ -1,28 +1,28 @@
 #! ./bin/python
 import sys
+import time
 import argparse
 import traceback
 import importlib.util
+import collections
 from functools import partial
 import signal
 import os
 import logging
+import asyncio
 
 import argh
 
 sys.path.append(os.getcwd())
 
-import Coronado
-from Coronado.Application import Application
-
 logger = logging.getLogger(__name__)
 
 config = None
 
-# pylint: disable=all
-def onSigTerm(app, signum, frame):
+def onSigTerm(context, signum, frame):
     logger.info('Caught signal %d, shutting down.', signum)
-    app._destroy()
+    if context['loop'].is_running():
+        context['loop'].stop()
 
 
 @argh.arg('-l', '--logLevel',
@@ -35,24 +35,93 @@ def start(logLevel='warning',
     '''
     Start the application.
     '''
-    Coronado.configureLogging(level=logLevel, format=logFormat)
+    logging.basicConfig(level=getattr(logging, logLevel.upper(),
+        logging.NOTSET), format=logFormat)
 
-    app = None
     try:
-        app = Application(config)
+        logger.info('Starting up...')
+
+        context = kwargs.pop('context', {})
+
+        # Initialize context to be a copy of the configuration
+        context = config.copy()
 
         # Install SIGINT and SIGTERM handler
-        signal.signal(signal.SIGINT, partial(onSigTerm, app))
-        signal.signal(signal.SIGTERM, partial(onSigTerm, app))
+        signal.signal(signal.SIGINT, partial(onSigTerm, context))
+        signal.signal(signal.SIGTERM, partial(onSigTerm, context))
 
-        logger.info('Starting application')
-        app._start(*args, **kwargs)
+        # Override with arguments, if any
+        context.update(context)
+        context.update(kwargs)
 
+        # Add empty "shortcutAttrs" if not there already
+        if 'shortcutAttrs' not in context:
+            context['shortcutAttrs'] = []
+
+        # Get event loop
+        context['loop'] = loop = asyncio.get_event_loop()
+
+        # Start app plugins
+        context['appPlugins'] = collections.OrderedDict()
+        pluginStartCoros = []
+        for plugin in context['plugins']:
+            appPluginClass = getattr(plugin, 'AppPlugin', False)
+            if not appPluginClass:
+                continue
+            appPlugin = appPluginClass()
+            startResult = appPlugin.start(context)
+            if startResult:
+                pluginStartCoros.append(startResult)
+            context['appPlugins'][appPlugin.getId()] = appPlugin
+
+        # Wait till all plugins are started
+        if pluginStartCoros:
+            loop.run_until_complete(asyncio.wait(pluginStartCoros))
+
+        # Call app-specific start() if any
+        startFn = getattr(context['appPackage'], 'start', False)
+        if startFn:
+            result = startFn(context)
+            if result is not None:
+                loop.run_until_complete(result)
+
+        # Start event loop
+        if context['startEventLoop']:
+            loop.call_soon(
+                    lambda: logger.info('Started event loop'))
+            loop.run_forever()
     except Exception:
         raise argh.CommandError(traceback.format_exc())
     finally:
-        if app is not None:
-            app._destroy()
+        destroy(context)
+        logger.info('Shutdown complete.')
+
+
+def destroy(context):
+    '''
+    Destroy the application.
+    '''
+    loop = context['loop']
+
+    # Call app-specific destroy()
+    destroyFn = getattr(context['appPackage'], 'destroy', False)
+    if destroyFn:
+        result = destroyFn()
+        if result is not None:
+            loop.run_until_complete(result)
+
+    # Destroy app plugins
+    pluginDestroyCoros = []
+    for appPlugin in reversed(context['appPlugins'].values()):
+        destroyResult = appPlugin.destroy(context)
+        if destroyResult:
+            pluginDestroyCoros.append(destroyResult)
+
+    # Wait till all plugins are destroyed
+    if pluginDestroyCoros:
+        loop.run_until_complete(asyncio.wait(pluginDestroyCoros))
+
+    loop.close()
 
 
 def main():
