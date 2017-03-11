@@ -32,7 +32,7 @@ config = \
 }
 ```
 
-HelloWorld/\__init__.py:
+HelloWorld/__init_\_.py:
 ```
 def f():
     print('Hello world!')
