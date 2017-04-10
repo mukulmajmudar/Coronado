@@ -138,7 +138,17 @@ def main():
 
         # Create the command line plugin
         clPlugin = clPluginClass()
-        clPlugin.setup(config.copy())
+
+        context = config.copy()
+
+        # Get event loop
+        context['loop'] = asyncio.get_event_loop()
+
+        # Add empty "shortcutAttrs" if not there already
+        if 'shortcutAttrs' not in context:
+            context['shortcutAttrs'] = []
+
+        clPlugin.setup(context)
 
         clPluginConfig = clPlugin.getConfig()
 
