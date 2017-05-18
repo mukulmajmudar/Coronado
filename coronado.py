@@ -63,7 +63,6 @@ def start(logLevel='warning',
 
         # Start app plugins
         context['appPlugins'] = collections.OrderedDict()
-        pluginStartCoros = []
         for plugin in context['plugins']:
             appPluginClass = getattr(plugin, 'AppPlugin', False)
             if not appPluginClass:
@@ -71,12 +70,8 @@ def start(logLevel='warning',
             appPlugin = appPluginClass()
             startResult = appPlugin.start(context)
             if startResult:
-                pluginStartCoros.append(startResult)
+                loop.run_until_complete(asyncio.ensure_future(startResult))
             context['appPlugins'][appPlugin.getId()] = appPlugin
-
-        # Wait till all plugins are started
-        if pluginStartCoros:
-            loop.run_until_complete(asyncio.wait(pluginStartCoros))
 
         # Call app-specific start() if any
         startFn = getattr(context['appPackage'], 'start', False)
