@@ -106,15 +106,10 @@ def destroy(context):
             loop.run_until_complete(result)
 
     # Destroy app plugins
-    pluginDestroyCoros = []
     for appPlugin in reversed(context['appPlugins'].values()):
         destroyResult = appPlugin.destroy(context)
         if destroyResult:
-            pluginDestroyCoros.append(destroyResult)
-
-    # Wait till all plugins are destroyed
-    if pluginDestroyCoros:
-        loop.run_until_complete(asyncio.wait(pluginDestroyCoros))
+            loop.run_until_complete(asyncio.ensure_future(destroyResult))
 
     loop.close()
 
